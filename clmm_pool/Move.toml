@@ -1,0 +1,40 @@
+[package]
+name = "clmm_pool"
+edition = "2024"
+
+[addresses]
+clmm_pool = "0x6a700cf2c245d51b4d98cc4b5b6b1c57acecdcde5db03ea36d48150108725979"
+
+[dev-dependencies]
+
+[dev-addresses]
+
+[dependencies.Sui]
+git = "https://github.com/MystenLabs/sui.git"
+subdir = "crates/sui-framework/packages/sui-framework"
+rev = "framework/mainnet"
+override = true
+
+[dependencies.move_stl]
+git = "https://github.com/LFBuild/FullSail-SC.git"
+subdir = "move_stl"
+rev = "main"
+override = true
+
+[dependencies.integer_mate]
+git = "https://github.com/LFBuild/FullSail-SC.git"
+subdir = "integer_mate"
+rev = "main"
+override = true
+
+[dependencies.gauge_cap]
+git = "https://github.com/LFBuild/FullSail-SC.git"
+subdir = "gauge_cap"
+rev = "main"
+override = true
+
+[dependencies.price_provider]
+git = "https://github.com/LFBuild/FullSail-SC.git"
+subdir = "price_provider"
+rev = "main"
+override = true
