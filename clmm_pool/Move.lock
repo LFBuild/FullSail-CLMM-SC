@@ -2,7 +2,7 @@
 
 [move]
 version = 3
-manifest_digest = "46DA5A0554A1D3DA4362FE3DEEF9FE5524E5B34A7ADB994651ED85E8CDF9BF74"
+manifest_digest = "928E3F61DF309A597FBDF2AA271899968A7EED4A89459A5F7342B1E51D1A6346"
 deps_digest = "397E6A9F7A624706DBDFEE056CE88391A15876868FD18A88504DA74EB458D697"
 dependencies = [
   { id = "Sui", name = "Sui" },
@@ -50,7 +50,7 @@ dependencies = [
 
 [[move.package]]
 id = "price_provider"
-source = { git = "https://github.com/LFBuild/FullSail-SC.git", rev = "main", subdir = "price_provider" }
+source = { local = "../price_provider" }
 
 dependencies = [
   { id = "Sui", name = "Sui" },

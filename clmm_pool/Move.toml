@@ -25,7 +25,4 @@ local = "../integer_mate"
 local = "../gauge_cap"
 
 [dependencies.price_provider]
-git = "https://github.com/LFBuild/FullSail-SC.git"
-subdir = "price_provider"
-rev = "main"
-override = true
+local = "../price_provider"

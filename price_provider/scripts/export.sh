@@ -1,0 +1,3 @@
+export ADDR=$(sui client active-address)
+
+export PACKAGE=0x1ac94be8fdc8a3844dbb94cf4d101ed95c08376bfabde9d6ad608f2848c28df2
