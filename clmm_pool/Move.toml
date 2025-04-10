@@ -16,22 +16,13 @@ rev = "framework/mainnet"
 override = true
 
 [dependencies.move_stl]
-git = "https://github.com/LFBuild/FullSail-SC.git"
-subdir = "move_stl"
-rev = "main"
-override = true
+local = "../move_stl"
 
 [dependencies.integer_mate]
-git = "https://github.com/LFBuild/FullSail-SC.git"
-subdir = "integer_mate"
-rev = "main"
-override = true
+local = "../integer_mate"
 
 [dependencies.gauge_cap]
-git = "https://github.com/LFBuild/FullSail-SC.git"
-subdir = "gauge_cap"
-rev = "main"
-override = true
+local = "../gauge_cap"
 
 [dependencies.price_provider]
 git = "https://github.com/LFBuild/FullSail-SC.git"

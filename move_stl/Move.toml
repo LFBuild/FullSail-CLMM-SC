@@ -1,0 +1,12 @@
+[package]
+name = "move_stl"
+edition = "2024"
+
+[addresses]
+move_stl = "0xe1262c3d7c8cf295a5ad90814cc06578186d43911a256ab7cf8e11d18e86815f"
+
+[dependencies.Sui]
+git = "https://github.com/MystenLabs/sui.git"
+subdir = "crates/sui-framework/packages/sui-framework"
+rev = "framework/mainnet"
+override = true

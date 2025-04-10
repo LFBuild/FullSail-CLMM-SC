@@ -1,0 +1,12 @@
+[package]
+name = "integer_mate"
+edition = "2024"
+
+[addresses]
+integer_mate = "0x273edb422b3404487a0e700224f541852e799957e4e289363a1675a8dcee158b"
+
+[dependencies.Sui]
+git = "https://github.com/MystenLabs/sui.git"
+subdir = "crates/sui-framework/packages/sui-framework"
+rev = "framework/mainnet"
+override = true

@@ -2,7 +2,7 @@
 
 [move]
 version = 3
-manifest_digest = "8741D5D482D6AFF1213D53D6E93E940CCF3A9508B4F0E5E9F9314223334C0AB0"
+manifest_digest = "46DA5A0554A1D3DA4362FE3DEEF9FE5524E5B34A7ADB994651ED85E8CDF9BF74"
 deps_digest = "397E6A9F7A624706DBDFEE056CE88391A15876868FD18A88504DA74EB458D697"
 dependencies = [
   { id = "Sui", name = "Sui" },
@@ -26,7 +26,7 @@ dependencies = [
 
 [[move.package]]
 id = "gauge_cap"
-source = { git = "https://github.com/LFBuild/FullSail-SC.git", rev = "main", subdir = "gauge_cap" }
+source = { local = "../gauge_cap" }
 
 dependencies = [
   { id = "Sui", name = "Sui" },
@@ -34,7 +34,7 @@ dependencies = [
 
 [[move.package]]
 id = "integer_mate"
-source = { git = "https://github.com/LFBuild/FullSail-SC.git", rev = "main", subdir = "integer_mate" }
+source = { local = "../integer_mate" }
 
 dependencies = [
   { id = "Sui", name = "Sui" },
@@ -42,7 +42,7 @@ dependencies = [
 
 [[move.package]]
 id = "move_stl"
-source = { git = "https://github.com/LFBuild/FullSail-SC.git", rev = "main", subdir = "move_stl" }
+source = { local = "../move_stl" }
 
 dependencies = [
   { id = "Sui", name = "Sui" },

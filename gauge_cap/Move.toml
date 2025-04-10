@@ -1,0 +1,16 @@
+[package]
+name = "gauge_cap"
+edition = "2024"
+
+[addresses]
+gauge_cap = "0x4b34e395f3bff8a825ba7354214014d68ed806e55d5739aaa7763d422f4fa76d"
+
+[dev-dependencies]
+
+[dev-addresses]
+
+[dependencies.Sui]
+git = "https://github.com/MystenLabs/sui.git"
+subdir = "crates/sui-framework/packages/sui-framework"
+rev = "framework/mainnet"
+override = true
