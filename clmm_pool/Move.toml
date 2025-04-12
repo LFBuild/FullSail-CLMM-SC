@@ -3,7 +3,7 @@ name = "clmm_pool"
 edition = "2024"
 
 [addresses]
-clmm_pool = "0x6a700cf2c245d51b4d98cc4b5b6b1c57acecdcde5db03ea36d48150108725979"
+clmm_pool = "0x0"
 
 [dev-dependencies]
 

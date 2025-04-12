@@ -3,7 +3,7 @@ name = "gauge_cap"
 edition = "2024"
 
 [addresses]
-gauge_cap = "0x4b34e395f3bff8a825ba7354214014d68ed806e55d5739aaa7763d422f4fa76d"
+gauge_cap = "0x0"
 
 [dev-dependencies]
 
