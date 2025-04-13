@@ -10,14 +10,29 @@
 /// 
 /// # Roles
 /// * 0: Pool Manager - Can manage pool settings and parameters
-/// * 1: Fee Manager - Can manage fee rates and fee-related settings
-/// * 2: Emergency Manager - Can pause/unpause pools in emergency situations
-/// * 3: Protocol Manager - Can manage protocol-level settings
-/// * 4: Gauge Manager - Can manage gauge-related settings
-/// * 5: Reward Manager - Can manage reward distribution settings
-/// * 6: Position Manager - Can manage position-related settings
-/// * 7: Liquidity Manager - Can manage liquidity-related settings
+/// * 1: Fee Tier Manager - Can manage fee tier settings
+/// * 2: Protocol Fee Claim - Can claim protocol fees
+/// * 3: Partner Manager - Can manage partner-related settings
+/// * 4: Rewarder Manager - Can manage reward distribution settings
+/// 
+/// Each role is represented by a bit in a 128-bit number (u128), where:
+/// * Role 0 corresponds to bit 0 (1 << 0)
+/// * Role 1 corresponds to bit 1 (1 << 1)
+/// * And so on...
+/// 
+/// For example:
+/// * If an address has the Pool Manager role, its permission will have bit 0 set
+/// * If an address has the Fee Tier Manager role, its permission will have bit 1 set
+/// * If an address has both roles, its permission will have bits 0 and 1 set (value 3)
 module clmm_pool::acl {
+    /// Role constants for ACL permissions
+    /// Each constant represents a bit position in the permission bitmap
+    const POOL_MANAGER: u8 = 0;
+    const FEE_TIER_MANAGER: u8 = 1;
+    const PROTOCOL_FEE_CLAIM: u8 = 2;
+    const PARTNER_MANAGER: u8 = 3;
+    const REWARDER_MANAGER: u8 = 4;
+
     /// Structure representing the Access Control List.
     /// Uses a linked table to store address-to-permission mappings.
     /// 
@@ -47,6 +62,31 @@ module clmm_pool::acl {
     /// A new ACL instance with an empty permissions table
     public fun new(ctx: &mut sui::tx_context::TxContext): ACL {
         ACL { permissions: move_stl::linked_table::new<address, u128>(ctx) }
+    }
+
+    /// Returns the Pool Manager role constant
+    public fun pool_manager_role(): u8 {
+        POOL_MANAGER
+    }
+
+    /// Returns the Fee Tier Manager role constant
+    public fun fee_tier_manager_role(): u8 {
+        FEE_TIER_MANAGER
+    }
+
+    /// Returns the Protocol Fee Claim role constant
+    public fun protocol_fee_claim_role(): u8 {
+        PROTOCOL_FEE_CLAIM
+    }
+
+    /// Returns the Partner Manager role constant
+    public fun partner_manager_role(): u8 {
+        PARTNER_MANAGER
+    }
+
+    /// Returns the Rewarder Manager role constant
+    public fun rewarder_manager_role(): u8 {
+        REWARDER_MANAGER
     }
 
     /// Adds a role to a member's permission set.

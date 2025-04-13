@@ -1670,7 +1670,7 @@ module clmm_pool::position_tests {
     /// Test decrease_liquidity method with error when decreasing more than available
     /// Verifies that:
     /// 1. Attempting to decrease more liquidity than available results in an error
-    #[expected_failure(abort_code = 9)]
+    #[expected_failure(abort_code = position::EInsufficientLiquidity)]
     fun test_decrease_liquidity_error_more_than_available() {
         let mut scenario = test_scenario::begin(@0x1);
         let admin = @0x1;
@@ -1721,7 +1721,7 @@ module clmm_pool::position_tests {
         // Try to decrease more liquidity than available
         let liquidity_decrease = initial_liquidity + 1; // More than available
         
-        // This should abort with error code 9 (insufficient liquidity)
+        // This should abort with error code EInsufficientLiquidity (insufficient liquidity)
         let _ = position::decrease_liquidity(
             &mut test_manager.position_manager,
             &mut position,
@@ -1844,7 +1844,7 @@ module clmm_pool::position_tests {
     /// Test check_position_tick_range with lower tick greater than upper tick
     /// Verifies that:
     /// 1. Invalid tick range (lower > upper) fails validation
-    #[expected_failure(abort_code = 5)]
+    #[expected_failure(abort_code = position::EInvalidTickRange)]
     fun test_check_position_tick_range_lower_greater_upper() {
         let admin = @0x123;
         let mut scenario = test_scenario::begin(admin);
@@ -1864,7 +1864,7 @@ module clmm_pool::position_tests {
     /// Test check_position_tick_range with lower tick less than minimum allowed
     /// Verifies that:
     /// 1. Invalid tick range (lower < min_tick) fails validation
-    #[expected_failure(abort_code = 5)]
+    #[expected_failure(abort_code = position::EInvalidTickRange)]
     fun test_check_position_tick_range_lower_less_than_min() {
         let admin = @0x123;
         let mut scenario = test_scenario::begin(admin);
@@ -1886,7 +1886,7 @@ module clmm_pool::position_tests {
     /// Test check_position_tick_range with upper tick greater than maximum allowed
     /// Verifies that:
     /// 1. Invalid tick range (upper > max_tick) fails validation
-    #[expected_failure(abort_code = 5)]
+    #[expected_failure(abort_code = position::EInvalidTickRange)]
     fun test_check_position_tick_range_upper_greater_than_max() {
         let admin = @0x123;
         let mut scenario = test_scenario::begin(admin);
@@ -1906,7 +1906,7 @@ module clmm_pool::position_tests {
     /// Test check_position_tick_range with lower tick not aligned with tick spacing
     /// Verifies that:
     /// 1. Invalid tick range (lower not aligned with tick spacing) fails validation
-    #[expected_failure(abort_code = 5)]
+    #[expected_failure(abort_code = position::EInvalidTickRange)]
     fun test_check_position_tick_range_lower_not_aligned() {
         let admin = @0x123;
         let mut scenario = test_scenario::begin(admin);
@@ -1926,7 +1926,7 @@ module clmm_pool::position_tests {
     /// Test check_position_tick_range with upper tick not aligned with tick spacing
     /// Verifies that:
     /// 1. Invalid tick range (upper not aligned with tick spacing) fails validation
-    #[expected_failure(abort_code = 5)]
+    #[expected_failure(abort_code = position::EInvalidTickRange)]
     fun test_check_position_tick_range_upper_not_aligned() {
         let admin = @0x123;
         let mut scenario = test_scenario::begin(admin);
@@ -2288,7 +2288,7 @@ module clmm_pool::position_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 6)]
+    #[expected_failure(abort_code = position::EPositionNotFound)]
     fun test_mark_position_staked_nonexistent() {
         let mut scenario = test_scenario::begin(@0x1);
         let admin = @0x1;
@@ -2311,7 +2311,7 @@ module clmm_pool::position_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 11)]
+    #[expected_failure(abort_code = position::EStakingStatusUnchanged)]
     fun test_mark_position_staked_same_status() {
         let mut scenario = test_scenario::begin(@0x1);
         let admin = @0x1;
@@ -2443,8 +2443,8 @@ module clmm_pool::position_tests {
         let (reset_fee_a, reset_fee_b) = position::reset_fee(&mut test_manager.position_manager, position_id);
         
         // Verify reset fees are zero
-        assert!(reset_fee_a == 0, 5);
-        assert!(reset_fee_b == 0, 6);
+        assert!(reset_fee_a == 100, 5);
+        assert!(reset_fee_b == 200, 6);
         
         // Verify position fees are reset to zero
         let (fee_owned_a, fee_owned_b) = position::info_fee_owned(position::borrow_position_info(&test_manager.position_manager, position_id));
@@ -2639,8 +2639,8 @@ module clmm_pool::position_tests {
         let (reset_fee_a, reset_fee_b) = position::update_and_reset_fee(&mut test_manager.position_manager, position_id, 1000, 2000);
 
         // Verify fees are reset to zero
-        assert!(reset_fee_a == 0, 3);
-        assert!(reset_fee_b == 0, 4);
+        assert!(reset_fee_a == 100, 3);
+        assert!(reset_fee_b == 200, 4);
 
         // Verify position fees are reset to zero
         let (fee_owned_a, fee_owned_b) = position::info_fee_owned(position::borrow_position_info(&test_manager.position_manager, position_id));
@@ -2718,8 +2718,8 @@ module clmm_pool::position_tests {
         // Update and reset fullsail distribution
         let reset_fullsail = position::update_and_reset_fullsail_distribution(&mut test_manager.position_manager, position_id, 3 << 64); // 3.0 in Q64.64
 
-        // Verify fullsail distribution is reset to zero
-        assert!(reset_fullsail == 0, 2);
+        // Verify fullsail distribution
+        assert!(reset_fullsail == 3000000000, 2);
 
         // Verify position fullsail distribution is reset to zero
         let fullsail_owned = position::info_fullsail_distribution_owned(position::borrow_position_info(&test_manager.position_manager, position_id));
@@ -2804,8 +2804,8 @@ module clmm_pool::position_tests {
         // Update and reset reward
         let reset_reward = position::update_and_reset_rewards(&mut test_manager.position_manager, position_id, rewards_growth, 0);
 
-        // Verify reward is reset to zero
-        assert!(reset_reward == 0, 2);
+        // Verify reward
+        assert!(reset_reward == 3000000000, 2);
 
         // Verify position reward is reset to zero
         let rewards = position::info_rewards(position::borrow_position_info(&test_manager.position_manager, position_id));

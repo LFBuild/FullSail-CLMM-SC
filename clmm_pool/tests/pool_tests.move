@@ -24,6 +24,7 @@ module clmm_pool::pool_tests {
     use clmm_pool::stats;
     use clmm_pool::tick_math;
     use clmm_pool::partner;
+    use clmm_pool::acl;
     use price_provider::price_provider;
 
     #[test_only]
@@ -232,7 +233,7 @@ module clmm_pool::pool_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 5)]
+    #[expected_failure(abort_code = position::EInvalidTickRange)]
     fun test_add_liquidity_internal_invalid_tick_range() {
         let admin = @0x1;
         let mut scenario = test_scenario::begin(admin);
@@ -2162,6 +2163,12 @@ module clmm_pool::pool_tests {
             let liquidity = position_info.info_liquidity();
             assert!(liquidity == 1000000000000000, 1);
 
+            let positions_info = pool::fetch_positions(&pool, vector[sui::object::id<clmm_pool::position::Position>(&position), sui::object::id<clmm_pool::position::Position>(&position2)], 1000);
+            assert!(positions_info.length() == 2, 2);
+            let position_info1 = positions_info[0];
+            let liquidity1 = position_info1.info_liquidity();
+            assert!(liquidity1 == 1000000000000000, 1);
+
             transfer::public_transfer(pool, admin);
             transfer::public_transfer(position, admin);
             transfer::public_transfer(position2, admin);
@@ -4037,7 +4044,7 @@ module clmm_pool::pool_tests {
             let clock = clock::create_for_testing(scenario.ctx());
             let mut rewarderGlobalVault = scenario.take_shared<rewarder::RewarderGlobalVault>();
 
-                        // Add sufficient coins to vault
+            // Add sufficient coins to vault
             let coin = sui::coin::mint_for_testing<TestCoinA>(100000000, scenario.ctx());
             let balance = sui::coin::into_balance(coin);
             rewarder::deposit_reward(&global_config, &mut rewarderGlobalVault, balance);
@@ -4569,6 +4576,20 @@ module clmm_pool::pool_tests {
                 &clock
             );
 
+            let (balance_a2, balance_b2, swap_receipt2) = pool::flash_swap_internal_test<TestCoinB, TestCoinA>(
+                &mut pool,
+                &global_config,
+                sui::object::id_from_address(@0x0), // partner_id
+                0, // ref_fee_rate
+                false, // a2b
+                true, // by_amount_in
+                100000, // amount
+                tick_math::max_sqrt_price(), // sqrt_price_limit
+                &mut stats,
+                &price_provider,
+                &clock
+            );
+
             pool::stake_in_fullsail_distribution<TestCoinB, TestCoinA>(
                 &mut pool,
                 &gauge_cap,
@@ -4595,6 +4616,18 @@ module clmm_pool::pool_tests {
                 &clock
             );
 
+            let (fee_growth_a, fee_growth_b, reward_growth, points_growth, fullsail_distribution_growth) = pool::get_all_growths_in_tick_range(
+                &pool,
+                integer_mate::i32::from(100),
+                integer_mate::i32::from(200)
+            );
+
+            assert!(fee_growth_a == 14757395258967, 11);
+            assert!(fee_growth_b == 14757395258967, 12);
+            assert!(reward_growth.length() == 0, 13);
+            assert!(points_growth == 0, 14);
+            assert!(fullsail_distribution_growth == 18446744073709551616, 15);
+
             // Calculate and update fullsail distribution
             let position_id = sui::object::id(&position);
             let fullsail_amount = pool::calculate_and_update_fullsail_distribution<TestCoinB, TestCoinA>(
@@ -4608,8 +4641,11 @@ module clmm_pool::pool_tests {
             
             // Return objects to scenario
             pool::destroy_flash_swap_receipt<TestCoinB, TestCoinA>(swap_receipt);
+            pool::destroy_flash_swap_receipt<TestCoinB, TestCoinA>(swap_receipt2);
             sui::balance::destroy_zero(balance_a);
+            sui::balance::destroy_zero(balance_b2);
             sui::coin::from_balance(balance_b, scenario.ctx()).burn_for_testing();
+            sui::coin::from_balance(balance_a2, scenario.ctx()).burn_for_testing();
             transfer::public_transfer(pool, admin);
             transfer::public_transfer(position, admin);
             test_scenario::return_shared(stats);
@@ -5733,6 +5769,999 @@ module clmm_pool::pool_tests {
             test_scenario::return_shared(global_config);
             clock::destroy_for_testing(clock);
             transfer::public_transfer(pool, admin);
+        };
+        
+        test_scenario::end(scenario);
+    }
+
+    #[test]
+    /// Test successful points calculation and update
+    /// Verifies that:
+    /// 1. Points are calculated and updated correctly for a position
+    /// 2. Points growth is updated in the pool
+    /// 3. Points are accumulated in the position
+    fun test_calculate_and_update_points_success() {
+        let admin = @0x1;
+        let mut scenario = test_scenario::begin(admin);
+        
+        // Initialize factory and config
+        {
+            factory::test_init(scenario.ctx());
+            config::test_init(scenario.ctx());
+            gauge_cap::gauge_cap::init_test(scenario.ctx());
+        };
+        
+        // Add fee tier
+        scenario.next_tx(admin);
+        {
+            let admin_cap = test_scenario::take_from_sender<AdminCap>(&scenario);
+            let mut global_config = test_scenario::take_shared<GlobalConfig>(&scenario);
+            config::add_fee_tier(&mut global_config, 1, 1000, scenario.ctx());
+            test_scenario::return_shared(global_config);
+            transfer::public_transfer(admin_cap, admin);
+        };
+        
+        scenario.next_tx(admin);
+        {
+            let pools = test_scenario::take_shared<Pools>(&scenario);
+            let global_config = test_scenario::take_shared<GlobalConfig>(&scenario);
+            let mut clock = clock::create_for_testing(scenario.ctx());
+            let create_gauge_cap = scenario.take_from_sender<gauge_cap::gauge_cap::CreateCap>();
+            
+            // Create a new pool
+            let mut pool = pool::new<TestCoinB, TestCoinA>(
+                1, // tick_spacing
+                18584142135623730951,
+                1000, // fee_rate
+                std::string::utf8(b""), // url
+                0, // pool_index
+                @0x2, // feed_id_coin_a
+                @0x3, // feed_id_coin_b
+                true, // auto_calculation_volumes
+                &clock,
+                scenario.ctx()
+            );
+
+            let gauge_cap = gauge_cap::gauge_cap::create_gauge_cap(
+                &create_gauge_cap,
+                sui::object::id(&pool), // gauge_id
+                sui::object::id(&pool),
+                scenario.ctx()
+            );
+
+            // Initialize fullsail distribution gauge
+            pool::init_fullsail_distribution_gauge<TestCoinB, TestCoinA>(&mut pool, &gauge_cap);
+            
+            // Create a position
+            let mut position = pool::open_position<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut pool,
+                100,  // tick_lower
+                300,  // tick_upper
+                scenario.ctx()
+            );
+
+            // Add liquidity to the position
+            let receipt = pool::add_liquidity<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut pool,
+                &mut position,
+                1<<64,  // delta_liquidity
+                &clock
+            );
+
+            let (pay_amount_a, pay_amount_b) = receipt.add_liquidity_pay_amount();
+            let coin_a = sui::coin::mint_for_testing<TestCoinB>(pay_amount_a, scenario.ctx());
+            let coin_b = sui::coin::mint_for_testing<TestCoinA>(pay_amount_b, scenario.ctx());
+            let balance_a = coin_a.into_balance<TestCoinB>();
+            let balance_b = coin_b.into_balance<TestCoinA>();
+
+            pool::repay_add_liquidity<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut pool,
+                balance_a,
+                balance_b,
+                receipt
+            );
+
+            clock::increment_for_testing(&mut clock, 3600000000000);
+            
+            // Calculate and update points
+            let points = pool::calculate_and_update_points<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut pool,
+                sui::object::id(&position),
+                &clock
+            );
+            
+            // Verify points were calculated and updated
+            assert!(points == 3600000000000000, 1);
+
+            let pointsInTickRange = pool::get_points_in_tick_range<TestCoinB, TestCoinA>(
+                &pool,
+                integer_mate::i32::from(100),
+                integer_mate::i32::from(200)
+            );
+            assert!(pointsInTickRange == 3600000000000000, 2);
+
+            let (_, _, _, points_growth, _) = pool::get_all_growths_in_tick_range(
+                &pool,
+                integer_mate::i32::from(100),
+                integer_mate::i32::from(200)
+            );
+            assert!(points_growth == 3600000000000000, 14);
+            
+            // Cleanup
+            transfer::public_transfer(position, admin);
+            transfer::public_transfer(pool, admin);
+            test_scenario::return_shared(pools);
+            transfer::public_transfer(gauge_cap, admin);
+            transfer::public_transfer(create_gauge_cap, admin);
+            test_scenario::return_shared(global_config);
+            clock::destroy_for_testing(clock);
+        };
+        
+        test_scenario::end(scenario);
+    }
+
+    #[test]
+    /// Test points calculation and update for a non-existent position
+    /// Verifies that:
+    /// 1. Attempting to calculate and update points for a non-existent position fails
+    #[expected_failure(abort_code = position::EPositionNotFound)]
+    fun test_calculate_and_update_points_nonexistent() {
+        let admin = @0x123;
+        let mut scenario = sui::test_scenario::begin(admin);
+        {
+            // Initialize factory and configuration
+            factory::test_init(scenario.ctx());
+            config::test_init(scenario.ctx());
+        };
+
+        // Add fee tier
+        scenario.next_tx(admin);
+        {
+            let admin_cap = scenario.take_from_sender<config::AdminCap>();
+            let mut global_config = scenario.take_shared<config::GlobalConfig>();
+            config::add_fee_tier(&mut global_config, 1, 1000, scenario.ctx());
+            test_scenario::return_shared(global_config);
+            transfer::public_transfer(admin_cap, admin);
+        };
+
+        scenario.next_tx(admin);
+        {
+            let global_config = scenario.take_shared<config::GlobalConfig>();
+            let clock = clock::create_for_testing(scenario.ctx());
+            
+            let mut pool = pool::new<TestCoinB, TestCoinA>(
+                1, // tick_spacing
+                18584142135623730951,
+                1000, // fee_rate
+                std::string::utf8(b""), // url
+                0, // pool_index
+                @0x2, // feed_id_coin_a
+                @0x3, // feed_id_coin_b
+                true, // auto_calculation_volumes
+                &clock,
+                scenario.ctx()
+            );
+
+            // Create a fake position ID
+            let fake_position_id = sui::object::id_from_address(@0x456);
+
+            // Attempt to calculate and update points for non-existent position
+            let _points = pool::calculate_and_update_points<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut pool,
+                fake_position_id,
+                &clock
+            );
+
+            // Transfer objects
+            sui::transfer::public_transfer(pool, admin);
+            sui::transfer::public_transfer(global_config, admin);
+            clock::destroy_for_testing(clock);
+        };
+        scenario.end();
+    }
+
+    #[test]
+    #[expected_failure(abort_code = 13)]
+    fun test_calculate_and_update_points_pool_paused() {
+        let admin = @0x123;
+        let mut scenario = sui::test_scenario::begin(admin);
+        {
+            // Initialize factory and configuration
+            factory::test_init(scenario.ctx());
+            config::test_init(scenario.ctx());
+        };
+
+        // Add fee tier
+        scenario.next_tx(admin);
+        {
+            let admin_cap = scenario.take_from_sender<config::AdminCap>();
+            let mut global_config = scenario.take_shared<config::GlobalConfig>();
+            config::add_fee_tier(&mut global_config, 1, 1000, scenario.ctx());
+            test_scenario::return_shared(global_config);
+            transfer::public_transfer(admin_cap, admin);
+        };
+
+        scenario.next_tx(admin);
+        {
+            let global_config = scenario.take_shared<config::GlobalConfig>();
+            let clock = clock::create_for_testing(scenario.ctx());
+            
+            let mut pool = pool::new<TestCoinB, TestCoinA>(
+                1, // tick_spacing
+                18584142135623730951,
+                1000, // fee_rate
+                std::string::utf8(b""), // url
+                0, // pool_index
+                @0x2, // feed_id_coin_a
+                @0x3, // feed_id_coin_b
+                true, // auto_calculation_volumes
+                &clock,
+                scenario.ctx()
+            );
+
+            // Pause the pool
+            pool::pause<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut pool,
+                scenario.ctx()
+            );
+
+            // Create a fake position ID
+            let position_id = sui::object::id_from_address(@0x456);
+
+            // Attempt to calculate and update points for non-existent position
+            let _points = pool::calculate_and_update_points<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut pool,
+                position_id,
+                &clock
+            );
+
+            // Transfer objects
+            sui::transfer::public_transfer(pool, admin);
+            sui::transfer::public_transfer(global_config, admin);
+            clock::destroy_for_testing(clock);
+        };
+        scenario.end();
+    }
+
+    #[test]
+    /// Test calculate_and_update_rewards method
+    /// Verifies that:
+    /// 1. Rewards are calculated and updated correctly for a position
+    /// 2. Rewards growth is updated in the pool
+    /// 3. Rewards are accumulated in the position
+    fun test_calculate_and_update_rewards() {
+        let admin = @0x1;
+        let mut scenario = test_scenario::begin(admin);
+        
+        // Initialize factory and config
+        {
+            factory::test_init(scenario.ctx());
+            config::test_init(scenario.ctx());
+            gauge_cap::gauge_cap::init_test(scenario.ctx());
+            stats::init_test(scenario.ctx());
+            price_provider::new(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
+        };
+        
+        // Add fee tier
+        scenario.next_tx(admin);
+        {
+            let admin_cap = test_scenario::take_from_sender<config::AdminCap>(&scenario);
+            let mut global_config = test_scenario::take_shared<config::GlobalConfig>(&scenario);
+            config::add_fee_tier(&mut global_config, 1, 1000, scenario.ctx());
+            config::add_role(&admin_cap, &mut global_config, admin, acl::rewarder_manager_role());
+            test_scenario::return_shared(global_config);
+            transfer::public_transfer(admin_cap, admin);
+        };
+        
+        scenario.next_tx(admin);
+        {
+            let global_config = test_scenario::take_shared<config::GlobalConfig>(&scenario);
+            let mut clock = clock::create_for_testing(scenario.ctx());
+            let mut stats = scenario.take_shared<stats::Stats>();
+            let price_provider = scenario.take_shared<price_provider::PriceProvider>();
+            let create_gauge_cap = scenario.take_from_sender<gauge_cap::gauge_cap::CreateCap>();
+            let mut rewarderGlobalVault = scenario.take_shared<rewarder::RewarderGlobalVault>();
+
+            // Add sufficient coins to vault
+            let balance = sui::coin::into_balance(sui::coin::mint_for_testing<TestCoinA>(10000000000, scenario.ctx()));
+            rewarder::deposit_reward(&global_config, &mut rewarderGlobalVault, balance);
+
+            let balance_b = sui::coin::into_balance(sui::coin::mint_for_testing<TestCoinB>(10000000000, scenario.ctx()));
+            rewarder::deposit_reward(&global_config, &mut rewarderGlobalVault, balance_b);
+            
+            // Create a new pool
+            let mut pool = pool::new<TestCoinB, TestCoinA>(
+                1, // tick_spacing
+                18584142135623730951,
+                1000, // fee_rate
+                std::string::utf8(b""), // url
+                0, // pool_index
+                @0x2, // feed_id_coin_a
+                @0x3, // feed_id_coin_b
+                true, // auto_calculation_volumes
+                &clock,
+                scenario.ctx()
+            );
+
+            // Create gauge cap
+            let gauge_cap = gauge_cap::gauge_cap::create_gauge_cap(
+                &create_gauge_cap,
+                sui::object::id(&pool), // gauge_id
+                sui::object::id(&pool),
+                scenario.ctx()
+            );
+
+            // Initialize fullsail distribution gauge
+            pool::init_fullsail_distribution_gauge<TestCoinB, TestCoinA>(&mut pool, &gauge_cap);
+
+            // Initialize rewarder
+            pool::initialize_rewarder<TestCoinB, TestCoinA, TestCoinA>(
+                &global_config,
+                &mut pool,
+                scenario.ctx()
+            );
+            pool::initialize_rewarder<TestCoinB, TestCoinA, TestCoinB>(
+                &global_config,
+                &mut pool,
+                scenario.ctx()
+            );
+
+            // Update emission rate
+            let new_emission_rate = 10000000000;
+            pool::update_emission<TestCoinB, TestCoinA, TestCoinA>(
+                &global_config,
+                &mut pool,
+                &rewarderGlobalVault,
+                new_emission_rate,
+                &clock,
+                scenario.ctx()
+            );
+
+            pool::update_emission<TestCoinB, TestCoinA, TestCoinB>(
+                &global_config,
+                &mut pool,
+                &rewarderGlobalVault,
+                new_emission_rate,
+                &clock,
+                scenario.ctx()
+            );
+
+            // Create a position
+            let mut position = pool::open_position<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut pool,
+                100, // tick_lower
+                200, // tick_upper
+                scenario.ctx()
+            );
+            
+            // Add liquidity to the position
+            let receipt = pool::add_liquidity<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut pool,
+                &mut position,
+                90<<64, // delta_liquidity
+                &clock
+            );
+            
+            // Get balances from receipt
+            let (pay_amount_a, pay_amount_b) = receipt.add_liquidity_pay_amount();
+            let coin_a = sui::coin::mint_for_testing<TestCoinB>(pay_amount_a, scenario.ctx());
+            let coin_b = sui::coin::mint_for_testing<TestCoinA>(pay_amount_b, scenario.ctx());
+            let balance_a = coin_a.into_balance<TestCoinB>();
+            let balance_b = coin_b.into_balance<TestCoinA>();
+
+            pool::repay_add_liquidity<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut pool,
+                balance_a,
+                balance_b,
+                receipt
+            );
+
+            clock::increment_for_testing(&mut clock, 3600000000000000);
+
+            let (balance_a, balance_b, swap_receipt) = pool::flash_swap_internal_test<TestCoinB, TestCoinA>(
+                &mut pool,
+                &global_config,
+                sui::object::id_from_address(@0x0), // partner_id
+                0, // ref_fee_rate
+                true, // a2b
+                true, // by_amount_in
+                100000, // amount
+                tick_math::min_sqrt_price(), // sqrt_price_limit
+                &mut stats,
+                &price_provider,
+                &clock
+            );
+
+            // Cleanup
+            pool::destroy_flash_swap_receipt<TestCoinB, TestCoinA>(swap_receipt);
+            sui::balance::destroy_zero(balance_a);
+            sui::coin::from_balance(balance_b, scenario.ctx()).burn_for_testing();
+            transfer::public_transfer(position, admin);
+            transfer::public_transfer(pool, admin);
+            test_scenario::return_shared(global_config);
+            transfer::public_transfer(gauge_cap, admin);
+            transfer::public_transfer(create_gauge_cap, admin);
+            test_scenario::return_shared(stats);
+            test_scenario::return_shared(price_provider);
+            clock::destroy_for_testing(clock);
+            test_scenario::return_shared(rewarderGlobalVault);
+        };
+
+        scenario.next_tx(admin);
+        {
+            let global_config = test_scenario::take_shared<config::GlobalConfig>(&scenario);
+            let mut clock = clock::create_for_testing(scenario.ctx());
+            let price_provider = scenario.take_shared<price_provider::PriceProvider>();
+            let create_gauge_cap = scenario.take_from_sender<gauge_cap::gauge_cap::CreateCap>();
+            let mut pool = scenario.take_from_sender<pool::Pool<TestCoinB, TestCoinA>>();
+            let position = scenario.take_from_sender<position::Position>();
+            let mut rewarderGlobalVault = scenario.take_shared<rewarder::RewarderGlobalVault>();
+
+
+            // Increment time to accumulate rewards
+            clock::increment_for_testing(&mut clock, 3600000000000000);
+
+            let points = pool::get_points_in_tick_range<TestCoinB, TestCoinA>(
+                &pool,
+                integer_mate::i32::from(100),
+                integer_mate::i32::from(200)
+            );
+            std::debug::print(&std::string::utf8(b"points"));
+            std::debug::print(&points);
+
+            let rewardA = pool::calculate_and_update_reward<TestCoinB, TestCoinA, TestCoinA>(
+                &global_config,
+                &mut pool,
+                sui::object::id(&position),
+                &clock
+            );
+            assert!(&rewardA == 1890, 2);
+
+            let rewardB = pool::calculate_and_update_reward<TestCoinB, TestCoinA, TestCoinB>(
+                &global_config,
+                &mut pool,
+                sui::object::id(&position),
+                &clock
+            );
+            assert!(&rewardB == 1890, 3);
+            // Calculate and update rewards
+            let rewards = pool::calculate_and_update_rewards<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut pool,
+                sui::object::id(&position),
+                &clock
+            );
+            // Verify rewards were calculated and updated
+            assert!(vector::length(&rewards) == 2, 1);
+            assert!(&rewards[0] == 1890, 2);
+            assert!(&rewards[1] == 1890, 3);
+
+            let rewardA = pool::get_position_reward<TestCoinB, TestCoinA, TestCoinA>(
+                &pool,
+                sui::object::id(&position)
+            );
+            assert!(rewardA == 1890, 2);
+
+            let rewardB = pool::get_position_reward<TestCoinB, TestCoinA, TestCoinB>(
+                &pool,
+                sui::object::id(&position)
+            );
+            assert!(rewardB == 1890, 3);
+            
+            let rewards_in_tick_range = pool::get_rewards_in_tick_range<TestCoinB, TestCoinA>(
+                &pool,
+                integer_mate::i32::from(100),
+                integer_mate::i32::from(200)
+            );
+            assert!(vector::length(&rewards_in_tick_range) == 2, 1);
+            assert!(&rewards_in_tick_range[0] == 21, 2);
+            assert!(&rewards_in_tick_range[1] == 21, 3);
+            
+            let (_, _, reward_growth, _, _) = pool::get_all_growths_in_tick_range(
+                &pool,
+                integer_mate::i32::from(100),
+                integer_mate::i32::from(200)
+            );
+
+            assert!(vector::length(&reward_growth) == 2, 1);
+            assert!(&reward_growth[0] == 21, 2);
+            assert!(&reward_growth[1] == 21, 3);
+
+            let rewardBalanceA = pool::collect_reward<TestCoinB, TestCoinA, TestCoinA>(
+                &global_config,
+                &mut pool,
+                &position,
+                &mut rewarderGlobalVault,
+                true,
+                &clock
+            );
+            assert!(sui::balance::value(&rewardBalanceA) == 1890, 1);
+
+            let rewardBalanceB = pool::collect_reward<TestCoinB, TestCoinA, TestCoinB>(
+                &global_config,
+                &mut pool,
+                &position,
+                &mut rewarderGlobalVault,
+                true,
+                &clock
+            );
+            assert!(sui::balance::value(&rewardBalanceB) == 1890, 1);
+            
+            // Cleanup
+            sui::coin::from_balance(rewardBalanceA, scenario.ctx()).burn_for_testing();
+            sui::coin::from_balance(rewardBalanceB, scenario.ctx()).burn_for_testing();
+            transfer::public_transfer(position, admin);
+            transfer::public_transfer(pool, admin);
+            test_scenario::return_shared(global_config);
+            transfer::public_transfer(create_gauge_cap, admin);
+            test_scenario::return_shared(price_provider);
+            test_scenario::return_shared(rewarderGlobalVault);
+            clock::destroy_for_testing(clock);
+        };
+        
+        test_scenario::end(scenario);
+    }
+
+    #[test]
+    /// Test collect_fee method for unstaked position
+    /// Verifies that:
+    /// 1. Fees are collected correctly for an unstaked position
+    /// 2. Fee amounts are updated when update_fee is true
+    /// 3. Fee amounts are reset when update_fee is false
+    fun test_collect_fee_unstaked() {
+        let admin = @0x1;
+        let mut scenario = test_scenario::begin(admin);
+        
+        // Initialize factory and config
+        {
+            factory::test_init(scenario.ctx());
+            config::test_init(scenario.ctx());
+            stats::init_test(scenario.ctx());
+            price_provider::new(scenario.ctx());
+        };
+        
+        // Add fee tier
+        scenario.next_tx(admin);
+        {
+            let admin_cap = test_scenario::take_from_sender<config::AdminCap>(&scenario);
+            let mut global_config = test_scenario::take_shared<config::GlobalConfig>(&scenario);
+            config::add_fee_tier(&mut global_config, 1, 1000, scenario.ctx());
+            test_scenario::return_shared(global_config);
+            transfer::public_transfer(admin_cap, admin);
+        };
+        
+        scenario.next_tx(admin);
+        {
+            let global_config = test_scenario::take_shared<config::GlobalConfig>(&scenario);
+            let clock = clock::create_for_testing(scenario.ctx());
+            let mut stats = scenario.take_shared<stats::Stats>();
+            let price_provider = scenario.take_shared<price_provider::PriceProvider>();
+            
+            // Create a new pool
+            let mut pool = pool::new<TestCoinB, TestCoinA>(
+                1, // tick_spacing
+                18584142135623730951,
+                1000, // fee_rate
+                std::string::utf8(b""), // url
+                0, // pool_index
+                @0x2, // feed_id_coin_a
+                @0x3, // feed_id_coin_b
+                true, // auto_calculation_volumes
+                &clock,
+                scenario.ctx()
+            );
+
+            // Create a position
+            let mut position = pool::open_position<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut pool,
+                100, // tick_lower
+                200, // tick_upper
+                scenario.ctx()
+            );
+            
+            // Add liquidity to the position
+            let receipt = pool::add_liquidity<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut pool,
+                &mut position,
+                90<<64, // delta_liquidity
+                &clock
+            );
+            
+            // Get balances from receipt
+            let (pay_amount_a, pay_amount_b) = receipt.add_liquidity_pay_amount();
+            let coin_a = sui::coin::mint_for_testing<TestCoinB>(pay_amount_a, scenario.ctx());
+            let coin_b = sui::coin::mint_for_testing<TestCoinA>(pay_amount_b, scenario.ctx());
+            let balance_a = coin_a.into_balance<TestCoinB>();
+            let balance_b = coin_b.into_balance<TestCoinA>();
+
+            pool::repay_add_liquidity<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut pool,
+                balance_a,
+                balance_b,
+                receipt
+            );
+
+            let (balance_a, balance_b, receipt) = pool::flash_swap<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut pool,
+                false,  // a2b
+                true,  // by_amount_in
+                100000000,    // минимальный размер свопа
+                18584142135623730951 + 10000000,
+                &mut stats,
+                &price_provider,
+                &clock
+            );
+
+            let (balance_a2, balance_b2, receipt2) = pool::flash_swap<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut pool,
+                true,  // a2b
+                true,  // by_amount_in
+                100000000,    // минимальный размер свопа
+                18584142135623730951 - 10000000,
+                &mut stats,
+                &price_provider,
+                &clock
+            );
+
+            // Collect fees with update_fee = true
+            let (fee_a, fee_b) = pool::collect_fee<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut pool,
+                &position,
+                true
+            );
+
+            std::debug::print(&fee_a);
+            std::debug::print(&fee_b);
+            
+            // Verify fees were collected
+            assert!(sui::balance::value(&fee_a) == 79920, 1);
+            assert!(sui::balance::value(&fee_b) == 79920, 2);
+            
+            // Cleanup
+            pool::destroy_flash_swap_receipt<TestCoinB, TestCoinA>(receipt);
+            sui::coin::from_balance(balance_a, scenario.ctx()).burn_for_testing();
+            sui::coin::from_balance(balance_b, scenario.ctx()).burn_for_testing();
+            pool::destroy_flash_swap_receipt<TestCoinB, TestCoinA>(receipt2);
+            sui::coin::from_balance(balance_b2, scenario.ctx()).burn_for_testing();
+            sui::coin::from_balance(balance_a2, scenario.ctx()).burn_for_testing();
+            sui::coin::from_balance(fee_a, scenario.ctx()).burn_for_testing();
+            sui::coin::from_balance(fee_b, scenario.ctx()).burn_for_testing();
+            transfer::public_transfer(position, admin);
+            transfer::public_transfer(pool, admin);
+            test_scenario::return_shared(global_config);
+            test_scenario::return_shared(stats);
+            test_scenario::return_shared(price_provider);
+            clock::destroy_for_testing(clock);
+        };
+        
+        test_scenario::end(scenario);
+    }
+
+    #[test]
+    /// Test collect_fee method for staked position
+    /// Verifies that:
+    /// 1. Fees are not collected for a staked position
+    /// 2. Zero balances are returned
+    fun test_collect_fee_staked() {
+        let admin = @0x1;
+        let mut scenario = test_scenario::begin(admin);
+        
+        // Initialize factory and config
+        {
+            factory::test_init(scenario.ctx());
+            config::test_init(scenario.ctx());
+            gauge_cap::gauge_cap::init_test(scenario.ctx());
+            stats::init_test(scenario.ctx());
+            price_provider::new(scenario.ctx());
+        };
+        
+        // Add fee tier
+        scenario.next_tx(admin);
+        {
+            let admin_cap = test_scenario::take_from_sender<config::AdminCap>(&scenario);
+            let mut global_config = test_scenario::take_shared<config::GlobalConfig>(&scenario);
+            config::add_fee_tier(&mut global_config, 1, 1000, scenario.ctx());
+            test_scenario::return_shared(global_config);
+            transfer::public_transfer(admin_cap, admin);
+        };
+        
+        scenario.next_tx(admin);
+        {
+            let mut pools = test_scenario::take_shared<factory::Pools>(&scenario);
+            let global_config = test_scenario::take_shared<config::GlobalConfig>(&scenario);
+            let clock = clock::create_for_testing(scenario.ctx());
+            let create_gauge_cap = scenario.take_from_sender<gauge_cap::gauge_cap::CreateCap>();
+            
+            // Create a new pool
+            let mut pool = pool::new<TestCoinB, TestCoinA>(
+                1, // tick_spacing
+                18584142135623730951,
+                1000, // fee_rate
+                std::string::utf8(b""), // url
+                0, // pool_index
+                @0x2, // feed_id_coin_a
+                @0x3, // feed_id_coin_b
+                true, // auto_calculation_volumes
+                &clock,
+                scenario.ctx()
+            );
+            
+            // Create gauge cap
+            let gauge_cap = gauge_cap::gauge_cap::create_gauge_cap(
+                &create_gauge_cap,
+                sui::object::id(&pool), // gauge_id
+                sui::object::id(&pool),
+                scenario.ctx()
+            );
+
+            // Initialize fullsail distribution gauge
+            pool::init_fullsail_distribution_gauge<TestCoinB, TestCoinA>(&mut pool, &gauge_cap);
+
+            // Create a position
+            let mut position = pool::open_position<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut pool,
+                0, // tick_lower
+                100, // tick_upper
+                scenario.ctx()
+            );
+            
+            // Add liquidity to the position
+            let receipt = pool::add_liquidity<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut pool,
+                &mut position,
+                1000000, // delta_liquidity
+                &clock
+            );
+            
+            // Get balances from receipt
+            let (pay_amount_a, pay_amount_b) = receipt.add_liquidity_pay_amount();
+            let coin_a = sui::coin::mint_for_testing<TestCoinB>(pay_amount_a, scenario.ctx());
+            let coin_b = sui::coin::mint_for_testing<TestCoinA>(pay_amount_b, scenario.ctx());
+            let balance_a = coin_a.into_balance<TestCoinB>();
+            let balance_b = coin_b.into_balance<TestCoinA>();
+
+            pool::repay_add_liquidity<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut pool,
+                balance_a,
+                balance_b,
+                receipt
+            );
+
+            // Stake the position
+            pool::stake_in_fullsail_distribution<TestCoinB, TestCoinA>(
+                &mut pool,
+                &gauge_cap,
+                1000000, // liquidity
+                integer_mate::i32::from(0), // tick_lower
+                integer_mate::i32::from(100), // tick_upper
+                &clock
+            );
+
+            // Collect fees
+            let (fee_a, fee_b) = pool::collect_fee<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut pool,
+                &position,
+                true
+            );
+            
+            // Verify fees were not collected (zero balances)
+            assert!(sui::balance::value(&fee_a) == 0, 1);
+            assert!(sui::balance::value(&fee_b) == 0, 2);
+            
+            // Cleanup
+            sui::balance::destroy_zero(fee_a);
+            sui::balance::destroy_zero(fee_b);
+            transfer::public_transfer(position, admin);
+            transfer::public_transfer(pool, admin);
+            test_scenario::return_shared(pools);
+            transfer::public_transfer(gauge_cap, admin);
+            transfer::public_transfer(create_gauge_cap, admin);
+            test_scenario::return_shared(global_config);
+            clock::destroy_for_testing(clock);
+        };
+        
+        test_scenario::end(scenario);
+    }
+
+    #[test]
+    /// Test collect_fullsail_distribution_gauger_fees method
+    /// Verifies that:
+    /// 1. Gauge fees are collected correctly with valid gauge cap
+    /// 2. Gauge fee accumulators are reset after collection
+    /// 3. CollectGaugeFeeEvent is emitted with correct amounts
+    fun test_collect_fullsail_distribution_gauger_fees_and_protocol_fee() {
+        let admin = @0x1;
+        let mut scenario = test_scenario::begin(admin);
+        
+        // Initialize factory and config
+        {
+            factory::test_init(scenario.ctx());
+            config::test_init(scenario.ctx());
+            gauge_cap::gauge_cap::init_test(scenario.ctx());
+            stats::init_test(scenario.ctx());
+            price_provider::new(scenario.ctx());
+        };
+        
+        // Add fee tier
+        scenario.next_tx(admin);
+        {
+            let admin_cap = test_scenario::take_from_sender<config::AdminCap>(&scenario);
+            let mut global_config = test_scenario::take_shared<config::GlobalConfig>(&scenario);
+            config::add_role(&admin_cap, &mut global_config, admin, 2);
+            config::add_fee_tier(&mut global_config, 1, 1000, scenario.ctx());
+            test_scenario::return_shared(global_config);
+            transfer::public_transfer(admin_cap, admin);
+        };
+        
+        scenario.next_tx(admin);
+        {
+            let global_config = test_scenario::take_shared<config::GlobalConfig>(&scenario);
+            let clock = clock::create_for_testing(scenario.ctx());
+            let create_gauge_cap = scenario.take_from_sender<gauge_cap::gauge_cap::CreateCap>();
+            let mut stats = scenario.take_shared<stats::Stats>();
+            let price_provider = scenario.take_shared<price_provider::PriceProvider>();
+
+            // Create a new pool
+            let mut pool = pool::new<TestCoinB, TestCoinA>(
+                1, // tick_spacing
+                18584142135623730951,
+                1000, // fee_rate
+                std::string::utf8(b""), // url
+                0, // pool_index
+                @0x2, // feed_id_coin_a
+                @0x3, // feed_id_coin_b
+                true, // auto_calculation_volumes
+                &clock,
+                scenario.ctx()
+            );
+            
+            // Create gauge cap
+            let gauge_cap = gauge_cap::gauge_cap::create_gauge_cap(
+                &create_gauge_cap,
+                sui::object::id(&pool), // gauge_id
+                sui::object::id(&pool),
+                scenario.ctx()
+            );
+
+            // Initialize fullsail distribution gauge
+            pool::init_fullsail_distribution_gauge<TestCoinB, TestCoinA>(&mut pool, &gauge_cap);
+
+            // Create a position
+            let mut position = pool::open_position<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut pool,
+                100, // tick_lower
+                200, // tick_upper
+                scenario.ctx()
+            );
+            
+            // Add liquidity to the position
+            let receipt = pool::add_liquidity<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut pool,
+                &mut position,
+                90<<64, // delta_liquidity
+                &clock
+            );
+            
+            // Get balances from receipt
+            let (pay_amount_a, pay_amount_b) = receipt.add_liquidity_pay_amount();
+            let coin_a = sui::coin::mint_for_testing<TestCoinB>(pay_amount_a, scenario.ctx());
+            let coin_b = sui::coin::mint_for_testing<TestCoinA>(pay_amount_b, scenario.ctx());
+            let balance_a = coin_a.into_balance<TestCoinB>();
+            let balance_b = coin_b.into_balance<TestCoinA>();
+
+            pool::repay_add_liquidity<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut pool,
+                balance_a,
+                balance_b,
+                receipt
+            );
+
+            pool::stake_in_fullsail_distribution<TestCoinB, TestCoinA>(
+                &mut pool,
+                &gauge_cap,
+                90<<64,  // liquidity
+                integer_mate::i32::from(100),  // tick_lower
+                integer_mate::i32::from(200),  // tick_upper
+                &clock
+            );
+
+            let (balance_a, balance_b, receipt) = pool::flash_swap<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut pool,
+                false,  // a2b
+                true,  // by_amount_in
+                100000000, 
+                18584142135623730951 + 10000000,
+                &mut stats,
+                &price_provider,
+                &clock
+            );
+
+            let (balance_a2, balance_b2, receipt2) = pool::flash_swap<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut pool,
+                true,  // a2b
+                true,  // by_amount_in
+                100000000, 
+                18584142135623730951 - 10000000,
+                &mut stats,
+                &price_provider,
+                &clock
+            );
+
+            let gauger_id = pool::get_fullsail_distribution_gauger_id<TestCoinB, TestCoinA>(&pool);
+            assert!(gauger_id == gauge_cap::gauge_cap::get_gauge_id(&gauge_cap), 11);
+
+            let (gauger_fee_a, gauger_fee_b) = pool::pool_fee_a_b(&pool::fullsail_distribution_gauger_fee<TestCoinB, TestCoinA>(&pool));
+            assert!(gauger_fee_a == 80000, 12);
+            assert!(gauger_fee_b == 80000, 13);
+           
+            // Collect gauge fees
+            let (fee_a, fee_b) = pool::collect_fullsail_distribution_gauger_fees<TestCoinB, TestCoinA>(
+                &mut pool,
+                &gauge_cap
+            );
+            
+            // Verify fees were collected
+            assert!(sui::balance::value(&fee_a) == 80000, 21);
+            assert!(sui::balance::value(&fee_b) == 80000, 22);
+
+            let (protocol_fee_a, protocol_fee_b) = pool::protocol_fee(&pool);
+            assert!(protocol_fee_a == 20000, 23);
+            assert!(protocol_fee_b == 20000, 24);
+
+            let (protocol_collect_fee_a, protocol_collect_fee_b) = pool::collect_protocol_fee<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut pool,
+                scenario.ctx()
+            );
+
+            assert!(sui::balance::value(&protocol_collect_fee_a) == 20000, 25);
+            assert!(sui::balance::value(&protocol_collect_fee_b) == 20000, 26);
+            
+            // Cleanup
+            pool::destroy_flash_swap_receipt<TestCoinB, TestCoinA>(receipt);
+            sui::coin::from_balance(balance_a, scenario.ctx()).burn_for_testing();
+            sui::coin::from_balance(balance_b, scenario.ctx()).burn_for_testing();
+            pool::destroy_flash_swap_receipt<TestCoinB, TestCoinA>(receipt2);
+            sui::balance::destroy_zero(balance_a2);
+            sui::coin::from_balance(balance_b2, scenario.ctx()).burn_for_testing();
+            sui::coin::from_balance(fee_a, scenario.ctx()).burn_for_testing();
+            sui::coin::from_balance(fee_b, scenario.ctx()).burn_for_testing();
+            sui::coin::from_balance(protocol_collect_fee_a, scenario.ctx()).burn_for_testing();
+            sui::coin::from_balance(protocol_collect_fee_b, scenario.ctx()).burn_for_testing();
+            transfer::public_transfer(position, admin);
+            transfer::public_transfer(pool, admin);
+            transfer::public_transfer(gauge_cap, admin);
+            transfer::public_transfer(create_gauge_cap, admin);
+            test_scenario::return_shared(stats);
+            test_scenario::return_shared(price_provider);
+            test_scenario::return_shared(global_config);
+            clock::destroy_for_testing(clock);
         };
         
         test_scenario::end(scenario);

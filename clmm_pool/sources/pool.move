@@ -18,6 +18,9 @@
 /// infrastructure for fee collection and reward distribution to liquidity providers.
 
 module clmm_pool::pool {
+
+    const EInsufficientStakedLiquidity: u64 = 9223379024766566399;
+
     public struct POOL has drop {}
 
     /// The main pool structure that represents a liquidity pool for a specific token pair.
@@ -1756,6 +1759,8 @@ module clmm_pool::pool {
         let (tick_lower, tick_upper) = clmm_pool::position::tick_range(position);
         let (fee_amount_a, fee_amount_b) = if (update_fee && clmm_pool::position::liquidity(position) != 0) {
             let (fee_growth_a, fee_growth_b) = get_fee_in_tick_range<CoinTypeA, CoinTypeB>(pool, tick_lower, tick_upper);
+            std::debug::print(&fee_growth_a);
+            std::debug::print(&fee_growth_b);
             let (amount_a, amount_b) = clmm_pool::position::update_and_reset_fee(&mut pool.position_manager, position_id, fee_growth_a, fee_growth_b);
             (amount_a, amount_b)
         } else {
@@ -2272,6 +2277,8 @@ module clmm_pool::pool {
             tick_lower_info,
             tick_upper_info
         );
+        std::debug::print(&std::string::utf8(b"rewards_growth_global"));
+        std::debug::print(&clmm_pool::rewarder::rewards_growth_global(&pool.rewarder_manager));
         (
             fee_growth_a,
             fee_growth_b,
@@ -3724,7 +3731,7 @@ module clmm_pool::pool {
     /// * `clock` - Reference to the Sui clock for timestamp verification
     /// 
     /// # Aborts
-    /// * If attempting to remove more liquidity than is currently staked (error code: 9223379024766566399)
+    /// * If attempting to remove more liquidity than is currently staked (error code: EInsufficientStakedLiquidity)
     fun update_fullsail_distribution_internal<CoinTypeA, CoinTypeB>(
         pool: &mut Pool<CoinTypeA, CoinTypeB>,
         liquidity_delta: integer_mate::i128::I128,
@@ -3740,7 +3747,7 @@ module clmm_pool::pool {
             if (integer_mate::i128::is_neg(liquidity_delta)) {
                 assert!(
                     pool.fullsail_distribution_staked_liquidity >= integer_mate::i128::abs_u128(liquidity_delta),
-                    9223379024766566399
+                    EInsufficientStakedLiquidity
                 );
             } else {
                 let (_, overflow) = integer_mate::i128::overflowing_add(

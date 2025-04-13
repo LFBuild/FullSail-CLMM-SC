@@ -23,6 +23,16 @@
 /// * Fee collection events
 /// * Staking status change events
 module clmm_pool::position {
+
+    const EOverflow: u64 = 1;
+    const ERewardIndexOutOfBounds: u64 = 2;
+    const EFullsailDistributionOverflow: u64 = 3;
+    const EPositionNotFound: u64 = 4;
+    const EInvalidTickRange: u64 = 5;
+    const EInsufficientLiquidity: u64 = 6;
+    const ELiquidityOverflow: u64 = 7;
+    const EStakingStatusUnchanged: u64 = 8;
+
     /// Event emitted when a position's staking status is changed.
     /// 
     /// # Fields
@@ -191,12 +201,12 @@ module clmm_pool::position {
     /// Mutable reference to the position information
     /// 
     /// # Abort Conditions
-    /// * If the position does not exist (error code: 6)
-    /// * If the position ID does not match the stored ID (error code: 6)
+    /// * If the position does not exist (error code: EPositionNotFound)
+    /// * If the position ID does not match the stored ID (error code: EPositionNotFound)
     fun borrow_mut_position_info(position_manager: &mut PositionManager, position_id: sui::object::ID): &mut PositionInfo {
-        assert!(move_stl::linked_table::contains<sui::object::ID, PositionInfo>(&position_manager.positions, position_id), 6);
+        assert!(move_stl::linked_table::contains<sui::object::ID, PositionInfo>(&position_manager.positions, position_id), EPositionNotFound);
         let position_info = move_stl::linked_table::borrow_mut<sui::object::ID, PositionInfo>(&mut position_manager.positions, position_id);
-        assert!(position_info.position_id == position_id, 6);
+        assert!(position_info.position_id == position_id, EPositionNotFound);
         position_info
     }
     
@@ -211,12 +221,12 @@ module clmm_pool::position {
     /// Immutable reference to the position information
     /// 
     /// # Abort Conditions
-    /// * If the position does not exist (error code: 6)
-    /// * If the position ID does not match the stored ID (error code: 6)
+    /// * If the position does not exist (error code: EPositionNotFound)
+    /// * If the position ID does not match the stored ID (error code: EPositionNotFound)
     public fun borrow_position_info(position_manager: &PositionManager, position_id: sui::object::ID): &PositionInfo {
-        assert!(move_stl::linked_table::contains<sui::object::ID, PositionInfo>(&position_manager.positions, position_id), 6);
+        assert!(move_stl::linked_table::contains<sui::object::ID, PositionInfo>(&position_manager.positions, position_id), EPositionNotFound);
         let position_info = move_stl::linked_table::borrow<sui::object::ID, PositionInfo>(&position_manager.positions, position_id);
-        assert!(position_info.position_id == position_id, 6);
+        assert!(position_info.position_id == position_id, EPositionNotFound);
         position_info
     }
     
@@ -233,7 +243,7 @@ module clmm_pool::position {
     /// * `tick_spacing` - Minimum distance between initialized ticks
     /// 
     /// # Abort Conditions
-    /// * If any of the tick range validation conditions are not met (error code: 5)
+    /// * If any of the tick range validation conditions are not met (error code: EInvalidTickRange)
     public fun check_position_tick_range(tick_lower: integer_mate::i32::I32, tick_upper: integer_mate::i32::I32, tick_spacing: u32) {
         let is_valid = if (integer_mate::i32::lt(tick_lower, tick_upper)) {
             if (integer_mate::i32::gte(tick_lower, clmm_pool::tick_math::min_tick())) {
@@ -252,7 +262,7 @@ module clmm_pool::position {
         } else {
             false
         };
-        assert!(is_valid, 5);
+        assert!(is_valid, EInvalidTickRange);
     }
     
     /// Closes a position by removing it from the position manager and destroying the position object.
@@ -290,9 +300,9 @@ module clmm_pool::position {
     /// The new liquidity amount after decrease
     /// 
     /// # Abort Conditions
-    /// * If the position does not exist (error code: 6)
-    /// * If the position ID does not match (error code: 6)
-    /// * If the current liquidity is less than the amount to decrease (error code: 9)
+    /// * If the position does not exist (error code: EPositionNotFound)
+    /// * If the position ID does not match (error code: EPositionNotFound)
+    /// * If the current liquidity is less than the amount to decrease (error code: EInsufficientLiquidity)
     public(package) fun decrease_liquidity(
         position_manager: &mut PositionManager,
         position: &mut Position,
@@ -311,7 +321,7 @@ module clmm_pool::position {
         update_points_internal(position_info, points_growth);
         update_rewards_internal(position_info, rewards_growth);
         update_fullsail_distribution_internal(position_info, fullsail_growth);
-        assert!(position_info.liquidity >= liquidity, 9);
+        assert!(position_info.liquidity >= liquidity, EInsufficientLiquidity);
         position_info.liquidity = position_info.liquidity - liquidity;
         position.liquidity = position_info.liquidity;
         position_info.liquidity
@@ -420,9 +430,9 @@ module clmm_pool::position {
     /// The new liquidity amount after increase
     /// 
     /// # Abort Conditions
-    /// * If the position does not exist (error code: 6)
-    /// * If the position ID does not match (error code: 6)
-    /// * If adding liquidity_delta would cause overflow (error code: 8)
+    /// * If the position does not exist (error code: EPositionNotFound)
+    /// * If the position ID does not match (error code: EPositionNotFound)
+    /// * If adding liquidity_delta would cause overflow (error code: ELiquidityOverflow)
     public(package) fun increase_liquidity(
         position_manager: &mut PositionManager,
         position: &mut Position,
@@ -438,7 +448,7 @@ module clmm_pool::position {
         update_points_internal(position_info, points_growth);
         update_rewards_internal(position_info, rewards_growth);
         update_fullsail_distribution_internal(position_info, fullsail_growth);
-        assert!(integer_mate::math_u128::add_check(position_info.liquidity, liquidity_delta), 8);
+        assert!(integer_mate::math_u128::add_check(position_info.liquidity, liquidity_delta), ELiquidityOverflow);
         position_info.liquidity = position_info.liquidity + liquidity_delta;
         position.liquidity = position_info.liquidity;
         position_info.liquidity
@@ -619,7 +629,7 @@ module clmm_pool::position {
     /// The number of rewards initialized for the position
     /// 
     /// # Abort Conditions
-    /// * If the position does not exist (error code: 6)
+    /// * If the position does not exist (error code: EPositionNotFound)
     public fun inited_rewards_count(position_manager: &PositionManager, position_id: sui::object::ID): u64 {
         std::vector::length<PositionReward>(
             &move_stl::linked_table::borrow<sui::object::ID, PositionInfo>(&position_manager.positions, position_id).rewards
@@ -671,12 +681,12 @@ module clmm_pool::position {
     /// * `staked` - New staking status (true to stake, false to unstake)
     /// 
     /// # Abort Conditions
-    /// * If the position does not exist (error code: 6)
-    /// * If the position ID does not match (error code: 6)
-    /// * If the new staking status is the same as the current status (error code: 11)
+    /// * If the position does not exist (error code: EPositionNotFound)
+    /// * If the position ID does not match (error code: EPositionNotFound)
+    /// * If the new staking status is the same as the current status (error code: EStakingStatusUnchanged)
     public(package) fun mark_position_staked(position_manager: &mut PositionManager, position_id: sui::object::ID, staked: bool) {
         let position_info = borrow_mut_position_info(position_manager, position_id);
-        assert!(position_info.fullsail_distribution_staked != staked, 11);
+        assert!(position_info.fullsail_distribution_staked != staked, EStakingStatusUnchanged);
         position_info.fullsail_distribution_staked = staked;
         let stake_event = StakePositionEvent {
             position_id: position_info.position_id,
@@ -739,8 +749,8 @@ module clmm_pool::position {
     /// * Initial liquidity of 0
     /// 
     /// # Abort Conditions
-    /// * If the tick range is invalid (error code: 5)
-    /// * If the position ID does not match (error code: 6)
+    /// * If the tick range is invalid (error code: EInvalidTickRange)
+    /// * If the position ID does not match (error code: EPositionNotFound)
     public(package) fun open_position<CoinTypeA, CoinTypeB>(
         position_manager: &mut PositionManager,
         pool_id: sui::object::ID,
@@ -808,13 +818,15 @@ module clmm_pool::position {
     /// Tuple containing the reset fee amounts (both will be 0)
     /// 
     /// # Abort Conditions
-    /// * If the position does not exist (error code: 6)
-    /// * If the position ID does not match (error code: 6)
+    /// * If the position does not exist (error code: EPositionNotFound)
+    /// * If the position ID does not match (error code: EPositionNotFound)
     public(package) fun reset_fee(position_manager: &mut PositionManager, position_id: sui::object::ID): (u64, u64) {
         let position_info = borrow_mut_position_info(position_manager, position_id);
+        let fee_owned_a = position_info.fee_owned_a;
+        let fee_owned_b = position_info.fee_owned_b;
         position_info.fee_owned_a = 0;
         position_info.fee_owned_b = 0;
-        (position_info.fee_owned_a, position_info.fee_owned_b)
+        (fee_owned_a, fee_owned_b)
     }
     
     /// Resets the unclaimed amount for a specific reward in a position to zero.
@@ -825,16 +837,17 @@ module clmm_pool::position {
     /// * `reward_index` - Index of the reward to reset
     /// 
     /// # Returns
-    /// The reset reward amount (will be 0)
+    /// The reset reward amount
     /// 
     /// # Abort Conditions
-    /// * If the position does not exist (error code: 6)
-    /// * If the position ID does not match (error code: 6)
+    /// * If the position does not exist (error code: EPositionNotFound)
+    /// * If the position ID does not match (error code: EPositionNotFound)
     /// * If the reward index is out of bounds
     public(package) fun reset_rewarder(position_manager: &mut PositionManager, position_id: sui::object::ID, reward_index: u64): u64 {
         let reward = std::vector::borrow_mut<PositionReward>(&mut borrow_mut_position_info(position_manager, position_id).rewards, reward_index);
+        let reward_amount = reward.amount_owned;
         reward.amount_owned = 0;
-        reward.amount_owned
+        reward_amount
     }
 
     /// Returns the unclaimed amount for a reward.
@@ -870,8 +883,8 @@ module clmm_pool::position {
     /// Vector of unclaimed reward amounts, one for each reward
     /// 
     /// # Abort Conditions
-    /// * If the position does not exist (error code: 6)
-    /// * If the position ID does not match (error code: 6)
+    /// * If the position does not exist (error code: EPositionNotFound)
+    /// * If the position ID does not match (error code: EPositionNotFound)
     public(package) fun rewards_amount_owned(position_manager: &PositionManager, position_id: sui::object::ID): vector<u64> {
         let rewards = info_rewards(borrow_position_info(position_manager, position_id));
         let mut index = 0;
@@ -978,12 +991,12 @@ module clmm_pool::position {
     /// * `fee_growth_b` - Updated fee growth value for token B
     /// 
     /// # Returns
-    /// Tuple containing the reset fee amounts (both will be 0)
+    /// Tuple containing the reset fee amounts
     /// 
     /// # Abort Conditions
-    /// * If the position does not exist (error code: 6)
-    /// * If the position ID does not match (error code: 6)
-    /// * If adding fee delta would cause overflow (error code: 1)
+    /// * If the position does not exist (error code: EPositionNotFound)
+    /// * If the position ID does not match (error code: EPositionNotFound)
+    /// * If adding fee delta would cause overflow (error code: EOverflow)
     public(package) fun update_and_reset_fee(
         position_manager: &mut PositionManager,
         position_id: sui::object::ID,
@@ -992,9 +1005,11 @@ module clmm_pool::position {
     ): (u64, u64) {
         let position_info = borrow_mut_position_info(position_manager, position_id);
         update_fee_internal(position_info, fee_growth_a, fee_growth_b);
+        let fee_owned_a = position_info.fee_owned_a;
+        let fee_owned_b = position_info.fee_owned_b;
         position_info.fee_owned_a = 0;
         position_info.fee_owned_b = 0;
-        (position_info.fee_owned_a, position_info.fee_owned_b)
+        (fee_owned_a, fee_owned_b)
     }
 
     /// Updates the FULLSAIL distribution growth and resets the unclaimed amount to zero.
@@ -1007,12 +1022,12 @@ module clmm_pool::position {
     /// * `fullsail_growth` - Updated FULLSAIL distribution growth value
     /// 
     /// # Returns
-    /// The reset FULLSAIL reward amount (will be 0)
+    /// The reset FULLSAIL reward amount
     /// 
     /// # Abort Conditions
-    /// * If the position does not exist (error code: 6)
-    /// * If the position ID does not match (error code: 6)
-    /// * If adding FULLSAIL delta would cause overflow (error code: 9223374347547181055)
+    /// * If the position does not exist (error code: EPositionNotFound)
+    /// * If the position ID does not match (error code: EPositionNotFound)
+    /// * If adding FULLSAIL delta would cause overflow (error code: EFullsailDistributionOverflow)
     public(package) fun update_and_reset_fullsail_distribution(
         position_manager: &mut PositionManager,
         position_id: sui::object::ID,
@@ -1020,8 +1035,9 @@ module clmm_pool::position {
     ): u64 {
         let position_info = borrow_mut_position_info(position_manager, position_id);
         update_fullsail_distribution_internal(position_info, fullsail_growth);
+        let reward_amount = position_info.fullsail_distribution_owned;
         position_info.fullsail_distribution_owned = 0;
-        position_info.fullsail_distribution_owned
+        reward_amount
     }
 
     /// Updates the rewards growth and resets the unclaimed amount for a specific reward to zero.
@@ -1035,25 +1051,26 @@ module clmm_pool::position {
     /// * `reward_index` - Index of the reward to reset
     /// 
     /// # Returns
-    /// The reset reward amount (will be 0)
+    /// The reset reward amount
     /// 
     /// # Abort Conditions
-    /// * If the position does not exist (error code: 6)
-    /// * If the position ID does not match (error code: 6)
-    /// * If the reward index is out of bounds (error code: 10)
-    /// * If adding reward delta would cause overflow (error code: 1)
+    /// * If the position does not exist (error code: EPositionNotFound)
+    /// * If the position ID does not match (error code: EPositionNotFound)
+    /// * If the reward index is out of bounds (error code: ERewardIndexOutOfBounds)
+    /// * If adding reward delta would cause overflow (error code: EOverflow)
     public(package) fun update_and_reset_rewards(
         position_manager: &mut PositionManager,
         position_id: sui::object::ID,
         rewards_growth: vector<u128>,
         reward_index: u64
     ): u64 {
-        assert!(std::vector::length<u128>(&rewards_growth) > reward_index, 10);
+        assert!(std::vector::length<u128>(&rewards_growth) > reward_index, ERewardIndexOutOfBounds);
         let position_info = borrow_mut_position_info(position_manager, position_id);
         update_rewards_internal(position_info, rewards_growth);
         let reward = std::vector::borrow_mut<PositionReward>(&mut position_info.rewards, reward_index);
+        let reward_amount = reward.amount_owned;
         reward.amount_owned = 0;
-        reward.amount_owned
+        reward_amount
     }
 
     /// Updates the fee growth for both tokens in a position.
@@ -1071,9 +1088,9 @@ module clmm_pool::position {
     /// Tuple containing unclaimed fees for tokens A and B
     /// 
     /// # Abort Conditions
-    /// * If the position does not exist (error code: 6)
-    /// * If the position ID does not match (error code: 6)
-    /// * If adding fee delta would cause overflow (error code: 1)
+    /// * If the position does not exist (error code: EPositionNotFound)
+    /// * If the position ID does not match (error code: EPositionNotFound)
+    /// * If adding fee delta would cause overflow (error code: EOverflow)
     public(package) fun update_fee(
         position_manager: &mut PositionManager,
         position_id: sui::object::ID,
@@ -1102,7 +1119,7 @@ module clmm_pool::position {
     /// 3. Updates the internal growth tracking
     /// 
     /// # Abort Conditions
-    /// * If adding either fee delta would cause overflow (error code: 1)
+    /// * If adding either fee delta would cause overflow (error code: EOverflow)
     fun update_fee_internal(position_info: &mut PositionInfo, fee_growth_a: u128, fee_growth_b: u128) {
         let fee_owned_a_delta = integer_mate::full_math_u128::mul_shr(
             position_info.liquidity,
@@ -1114,8 +1131,8 @@ module clmm_pool::position {
             integer_mate::math_u128::wrapping_sub(fee_growth_b, position_info.fee_growth_inside_b),
             64
         ) as u64;
-        assert!(integer_mate::math_u64::add_check(position_info.fee_owned_a, fee_owned_a_delta), 1);
-        assert!(integer_mate::math_u64::add_check(position_info.fee_owned_b, fee_owned_b_delta), 1);
+        assert!(integer_mate::math_u64::add_check(position_info.fee_owned_a, fee_owned_a_delta), EOverflow);
+        assert!(integer_mate::math_u64::add_check(position_info.fee_owned_b, fee_owned_b_delta), EOverflow);
         position_info.fee_owned_a = position_info.fee_owned_a + fee_owned_a_delta;
         position_info.fee_owned_b = position_info.fee_owned_b + fee_owned_b_delta;
         position_info.fee_growth_inside_a = fee_growth_a;
@@ -1134,8 +1151,8 @@ module clmm_pool::position {
     /// The current unclaimed FULLSAIL rewards amount
     /// 
     /// # Abort Conditions
-    /// * If the position does not exist (error code: 6)
-    /// * If the position ID does not match (error code: 6)
+    /// * If the position does not exist (error code: EPositionNotFound)
+    /// * If the position ID does not match (error code: EPositionNotFound)
     public(package) fun update_fullsail_distribution(
         position_manager: &mut PositionManager,
         position_id: sui::object::ID,
@@ -1162,7 +1179,7 @@ module clmm_pool::position {
     /// 3. Updates the internal growth tracking
     /// 
     /// # Abort Conditions
-    /// * If adding the FULLSAIL delta would cause overflow (error code: 9223374347547181055)
+    /// * If adding the FULLSAIL delta would cause overflow (error code: EFullsailDistributionOverflow)
     fun update_fullsail_distribution_internal(position_info: &mut PositionInfo, fullsail_growth: u128) {
         let fullsail_delta = integer_mate::full_math_u128::mul_shr(
             position_info.liquidity,
@@ -1177,7 +1194,7 @@ module clmm_pool::position {
                 position_info.fullsail_distribution_owned,
                 fullsail_delta
             ),
-            9223374347547181055
+            EFullsailDistributionOverflow
         );
         position_info.fullsail_distribution_owned = position_info.fullsail_distribution_owned + fullsail_delta;
         position_info.fullsail_distribution_growth_inside = fullsail_growth;
@@ -1196,9 +1213,9 @@ module clmm_pool::position {
     /// The current unclaimed points amount
     /// 
     /// # Abort Conditions
-    /// * If the position does not exist (error code: 6)
-    /// * If the position ID does not match (error code: 6)
-    /// * If adding points delta would cause overflow (error code: 3)
+    /// * If the position does not exist (error code: EPositionNotFound)
+    /// * If the position ID does not match (error code: EPositionNotFound)
+    /// * If adding points delta would cause overflow (error code: EOverflow)
     public(package) fun update_points(position_manager: &mut PositionManager, position_id: sui::object::ID, points_growth: u128): u128 {
         let position_info = borrow_mut_position_info(position_manager, position_id);
         update_points_internal(position_info, points_growth);
@@ -1221,14 +1238,14 @@ module clmm_pool::position {
     /// 3. Updates internal growth tracking
     /// 
     /// # Abort Conditions
-    /// * If adding points delta would cause overflow (error code: 3)
+    /// * If adding points delta would cause overflow (error code: EOverflow)
     fun update_points_internal(position_info: &mut PositionInfo, points_growth: u128) {
         let points_delta = integer_mate::full_math_u128::mul_shr(
             position_info.liquidity,
             integer_mate::math_u128::wrapping_sub(points_growth, position_info.points_growth_inside),
             64
         );
-        assert!(integer_mate::math_u128::add_check(position_info.points_owned, points_delta), 3);
+        assert!(integer_mate::math_u128::add_check(position_info.points_owned, points_delta), EOverflow);
         position_info.points_owned = position_info.points_owned + points_delta;
         position_info.points_growth_inside = points_growth;
     }
@@ -1245,8 +1262,9 @@ module clmm_pool::position {
     /// Vector of current unclaimed reward amounts for each reward type
     /// 
     /// # Abort Conditions
-    /// * If the position does not exist (error code: 6)
-    /// * If the position ID does not match (error code: 6)
+    /// * If the position does not exist (error code: EPositionNotFound)
+    /// * If the position ID does not match (error code: EPositionNotFound)
+    /// * If adding reward delta would cause overflow (error code: EOverflow)
     public(package) fun update_rewards(
         position_manager: &mut PositionManager,
         position_id: sui::object::ID,
@@ -1281,7 +1299,7 @@ module clmm_pool::position {
     /// 4. Creates new rewards if their count is less than the number of growth values
     /// 
     /// # Abort Conditions
-    /// * If adding reward delta would cause overflow (error code: 1)
+    /// * If adding reward delta would cause overflow (error code: EOverflow)
     fun update_rewards_internal(position_info: &mut PositionInfo, rewards_growth: vector<u128>) {
         let mut index = 0;
         while (index < std::vector::length<u128>(&rewards_growth)) {
@@ -1293,7 +1311,7 @@ module clmm_pool::position {
                     position_info.liquidity,
                     64
                 ) as u64;
-                assert!(integer_mate::math_u64::add_check(reward.amount_owned, reward_delta), 1);
+                assert!(integer_mate::math_u64::add_check(reward.amount_owned, reward_delta), EOverflow);
                 reward.growth_inside = current_growth;
                 reward.amount_owned = reward.amount_owned + reward_delta;
             } else {
@@ -1430,7 +1448,7 @@ module clmm_pool::position {
             assert!(std::string::utf8(b"{coin_type_a}") == *coin_a_field, 4);
 
             let coin_b_field = sui::vec_map::get(display_fields, &std::string::utf8(b"coin_b"));
-            assert!(std::string::utf8(b"{coin_type_b}") == *coin_b_field, 5);
+            assert!(std::string::utf8(b"{coin_type_b}") == *coin_b_field, 95);
 
             let link_field = sui::vec_map::get(display_fields, &std::string::utf8(b"link"));
             assert!(std::string::utf8(b"https://app.fullsailfinance.io/position?chain=sui&id={id}") == *link_field, 6);
@@ -1512,17 +1530,17 @@ module clmm_pool::position {
         
         let (info_tick_lower, info_tick_upper) = info_tick_range(position_info);
         assert!(integer_mate::i32::eq(info_tick_lower, tick_lower), 4);
-        assert!(integer_mate::i32::eq(info_tick_upper, tick_upper), 5);
+        assert!(integer_mate::i32::eq(info_tick_upper, tick_upper), 55);
         
         // Verify fee growth is initialized to 0
         let (fee_growth_a, fee_growth_b) = info_fee_growth_inside(position_info);
-        assert!(fee_growth_a == 0, 6);
+        assert!(fee_growth_a == 0, 46);
         assert!(fee_growth_b == 0, 7);
         
         // Verify fee owned is initialized to 0
         let (fee_owned_a, fee_owned_b) = info_fee_owned(position_info);
-        assert!(fee_owned_a == 0, 8);
-        assert!(fee_owned_b == 0, 9);
+        assert!(fee_owned_a == 0, 78);
+        assert!(fee_owned_b == 0, 79);
         
         // Verify points are initialized to 0
         assert!(info_points_owned(position_info) == 0, 10);
@@ -1530,11 +1548,11 @@ module clmm_pool::position {
         
         // Verify rewards are initialized to empty
         let rewards = info_rewards(position_info);
-        assert!(std::vector::length(rewards) == 0, 12);
+        assert!(std::vector::length(rewards) == 0, 19);
         
         // Verify fullsail distribution is initialized
-        assert!(!is_staked(position_info), 13);
-        assert!(info_fullsail_distribution_owned(position_info) == 0, 14);
+        assert!(!is_staked(position_info), 65);
+        assert!(info_fullsail_distribution_owned(position_info) == 0, 66);
         
         // Transfer objects
         sui::transfer::public_transfer(position, admin);
@@ -1546,7 +1564,7 @@ module clmm_pool::position {
     /// Test borrow_mut_position_info with non-existent position
     /// Verifies that:
     /// 1. Attempting to borrow mutable reference to non-existent position fails
-    #[expected_failure(abort_code = 6)]
+    #[expected_failure(abort_code = EPositionNotFound)]
     fun test_borrow_mut_position_info_nonexistent() {
         let admin = @0x123;
         let mut scenario = sui::test_scenario::begin(admin);
@@ -1564,7 +1582,7 @@ module clmm_pool::position {
         assert!(!is_position_exist(&test_manager.position_manager, fake_position_id), 1);
         
         // Attempt to get mutable reference to non-existent position info
-        // This should abort with error code 6 (position not found)
+        // This should abort with error code 14 (position not found)
         let _position_info = borrow_mut_position_info(&mut test_manager.position_manager, fake_position_id);
         transfer::public_transfer(test_manager, admin);
 
@@ -1575,7 +1593,7 @@ module clmm_pool::position {
     /// Test borrow_mut_position_info with wrong position ID
     /// Verifies that:
     /// 1. Attempting to borrow mutable reference with wrong position ID fails
-    #[expected_failure(abort_code = 6)]
+    #[expected_failure(abort_code = EPositionNotFound)]
     fun test_borrow_mut_position_info_wrong_id() {
         let admin = @0x123;
         let mut scenario = sui::test_scenario::begin(admin);
@@ -1619,7 +1637,7 @@ module clmm_pool::position {
         assert!(!is_position_exist(&test_manager.position_manager, different_position_id), 2);
         
         // Attempt to get mutable reference with wrong position ID
-        // This should abort with error code 6 (position not found)
+        // This should abort with error code 14 (position not found)
         let _position_info = borrow_mut_position_info(&mut test_manager.position_manager, different_position_id);
         
         // Transfer objects
@@ -1770,7 +1788,7 @@ module clmm_pool::position {
         assert!(reward1.growth_inside == 2000 << 64, 4);
         // For liquidity = 1000 and growth = 2000 << 64:
         // amount_owned = (1000 * 2000 << 64) >> 64 = 2000
-        assert!(reward1.amount_owned == 2000 * 1000, 5);
+        assert!(reward1.amount_owned == 2000 * 1000, 75);
     }
 
     #[test]
