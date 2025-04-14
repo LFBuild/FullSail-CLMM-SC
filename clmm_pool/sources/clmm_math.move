@@ -12,6 +12,18 @@
 /// * Position management
 /// * Tick spacing and range calculations
 module clmm_pool::clmm_math {
+    /// Error codes for the CLMM math module
+    const EPriceExceedsMax: u64 = 0;
+    const EPriceBelowMin: u64 = 1;
+    const ECalculationOverflow: u64 = 2;
+    const EInvalidTargetPrice: u64 = 4;
+    const ECurrentTickOutsideRange: u64 = 3018;
+    const EZeroAmount: u64 = 3019;
+    const EZeroSqrtPriceDiff: u64 = 3020;
+
+    /// Maximum value for a 64-bit unsigned integer (2^64 - 1)
+    const MAX_U64: u128 = 18446744073709551615;
+
     /// Computes a single step of a swap operation, calculating the amounts, fees, and next price.
     /// This function handles the core swap logic including:
     /// * Price movement calculations
@@ -36,7 +48,7 @@ module clmm_pool::clmm_math {
     /// * `fee_amount` - Amount of fees charged
     /// 
     /// # Aborts
-    /// * If the target price is invalid for the swap direction (error code: 4)
+    /// * If the target price is invalid for the swap direction (error code: EInvalidTargetPrice)
     /// * If the liquidity is zero (returns zero amounts)
     public fun compute_swap_step(
         current_sqrt_price: u128,
@@ -51,12 +63,12 @@ module clmm_pool::clmm_math {
             return (0, 0, target_sqrt_price, 0)
         };
         if (a2b) {
-            assert!(current_sqrt_price >= target_sqrt_price, 4);
+            assert!(current_sqrt_price >= target_sqrt_price, EInvalidTargetPrice);
         } else {
-            assert!(current_sqrt_price < target_sqrt_price, 4);
+            assert!(current_sqrt_price < target_sqrt_price, EInvalidTargetPrice);
         };
         let (fee_amount, next_sqrt_price, amount_in, amount_out) = if (by_amount_in) {
-            let amount_after_fee = integer_mate::full_math_u64::mul_div_floor(amount, 1000000 - fee_rate, 1000000);
+            let amount_after_fee = integer_mate::full_math_u64::mul_div_floor(amount, fee_rate_denominator() - fee_rate, fee_rate_denominator());
             let mut adjusted_amount = amount_after_fee;
             if (fee_rate > 0 && amount_after_fee == amount) {
                 adjusted_amount = amount_after_fee - 1;
@@ -65,7 +77,7 @@ module clmm_pool::clmm_math {
             let (final_amount_in, final_fee_amount, final_sqrt_price) = if (delta_up > (adjusted_amount as u256)) {
                 (adjusted_amount, amount - adjusted_amount, get_next_sqrt_price_from_input(current_sqrt_price, liquidity, adjusted_amount, a2b))
             } else {
-                (delta_up as u64, integer_mate::full_math_u64::mul_div_ceil(delta_up as u64, fee_rate, 1000000 - fee_rate), target_sqrt_price)
+                (delta_up as u64, integer_mate::full_math_u64::mul_div_ceil(delta_up as u64, fee_rate, fee_rate_denominator() - fee_rate), target_sqrt_price)
             };
             (final_fee_amount, final_sqrt_price, final_amount_in, get_delta_down_from_output(current_sqrt_price, final_sqrt_price, liquidity, a2b) as u64)
         } else {
@@ -76,7 +88,7 @@ module clmm_pool::clmm_math {
                 (delta_down as u64, target_sqrt_price)
             };
             let amount_in = get_delta_up_from_input(current_sqrt_price, final_sqrt_price, liquidity, a2b) as u64;
-            let calculated_fee = integer_mate::full_math_u64::mul_div_ceil(amount_in, fee_rate, 1000000 - fee_rate);
+            let calculated_fee = integer_mate::full_math_u64::mul_div_ceil(amount_in, fee_rate, fee_rate_denominator() - fee_rate);
             let mut final_fee = calculated_fee;
             if (fee_rate > 0 && calculated_fee == 0) {
                 final_fee = 1;
@@ -168,7 +180,7 @@ module clmm_pool::clmm_math {
     /// The amount of token A needed
     /// 
     /// # Aborts
-    /// * If the calculation would overflow (error code: 2)
+    /// * If the calculation would overflow (error code: ECalculationOverflow)
     public fun get_delta_a(sqrt_price_a: u128, sqrt_price_b: u128, liquidity: u128, round_up: bool): u64 {
         let sqrt_price_diff = if (sqrt_price_a > sqrt_price_b) {
             sqrt_price_a - sqrt_price_b
@@ -180,7 +192,7 @@ module clmm_pool::clmm_math {
         };
         let (shifted_product, overflow) = integer_mate::math_u256::checked_shlw(integer_mate::full_math_u128::full_mul(liquidity, sqrt_price_diff));
         if (overflow) {
-            abort 2
+            abort ECalculationOverflow
         };
         integer_mate::math_u256::div_round(shifted_product, integer_mate::full_math_u128::full_mul(sqrt_price_a, sqrt_price_b), round_up) as u64
     }
@@ -206,7 +218,7 @@ module clmm_pool::clmm_math {
             return 0
         };
         let product = integer_mate::full_math_u128::full_mul(liquidity, sqrt_price_diff);
-        if (round_up && (product & 18446744073709551615 > 0)) {
+        if (round_up && (product & (MAX_U64 as u256) > 0)) {
             return ((product >> 64) + 1) as u64
         };
         (product >> 64) as u64
@@ -225,7 +237,7 @@ module clmm_pool::clmm_math {
     /// The output amount as a u256 value
     /// 
     /// # Aborts
-    /// * If the calculation would overflow (error code: 2)
+    /// * If the calculation would overflow (error code: ECalculationOverflow)
     public fun get_delta_down_from_output(sqrt_price_a: u128, sqrt_price_b: u128, liquidity: u128, round_up: bool): u256 {
         let sqrt_price_diff = if (sqrt_price_a > sqrt_price_b) {
             sqrt_price_a - sqrt_price_b
@@ -240,7 +252,7 @@ module clmm_pool::clmm_math {
         } else {
             let (shifted_product, overflow) = integer_mate::math_u256::checked_shlw(integer_mate::full_math_u128::full_mul(liquidity, sqrt_price_diff));
             if (overflow) {
-                abort 2
+                abort ECalculationOverflow
             };
             integer_mate::math_u256::div_round(shifted_product, integer_mate::full_math_u128::full_mul(sqrt_price_a, sqrt_price_b), false)
         }
@@ -259,7 +271,7 @@ module clmm_pool::clmm_math {
     /// The input amount as a u256 value
     /// 
     /// # Aborts
-    /// * If the calculation would overflow (error code: 2)
+    /// * If the calculation would overflow (error code: ECalculationOverflow)
     public fun get_delta_up_from_input(sqrt_price_a: u128, sqrt_price_b: u128, liquidity: u128, round_up: bool): u256 {
         let sqrt_price_diff = if (sqrt_price_a > sqrt_price_b) {
             sqrt_price_a - sqrt_price_b
@@ -272,12 +284,12 @@ module clmm_pool::clmm_math {
         if (round_up) {
             let (shifted_product, overflow) = integer_mate::math_u256::checked_shlw(integer_mate::full_math_u128::full_mul(liquidity, sqrt_price_diff));
             if (overflow) {
-                abort 2
+                abort ECalculationOverflow
             };
             integer_mate::math_u256::div_round(shifted_product, integer_mate::full_math_u128::full_mul(sqrt_price_a, sqrt_price_b), true)
         } else {
             let product = integer_mate::full_math_u128::full_mul(liquidity, sqrt_price_diff);
-            let result = if (product & 18446744073709551615 > 0) {
+            let result = if (product & (MAX_U64 as u256) > 0) {
                 (product >> 64) + 1
             } else {
                 product >> 64
@@ -304,7 +316,7 @@ module clmm_pool::clmm_math {
     /// * The amount of token B needed
     /// 
     /// # Aborts
-    /// * If the current tick is outside the valid range (error code: 3018)
+    /// * If the current tick is outside the valid range (error code: ECurrentTickOutsideRange)
     public fun get_liquidity_by_amount(
         tick_lower: integer_mate::i32::I32,
         tick_upper: integer_mate::i32::I32,
@@ -313,7 +325,7 @@ module clmm_pool::clmm_math {
         amount_in: u64,
         is_fix_amount_a: bool
     ): (u128, u64, u64) {
-        assert!(amount_in > 0, 3019);
+        assert!(amount_in > 0, EZeroAmount);
         if (is_fix_amount_a) {
             let (liquidity, amount_b) = if (integer_mate::i32::lt(current_tick, tick_lower)) {
                 (get_liquidity_from_a(
@@ -323,7 +335,7 @@ module clmm_pool::clmm_math {
                     false
                 ), 0)
             } else {
-                assert!(integer_mate::i32::lt(current_tick, tick_upper), 3018);
+                assert!(integer_mate::i32::lt(current_tick, tick_upper), ECurrentTickOutsideRange);
                 let liquidity = get_liquidity_from_a(current_sqrt_price, clmm_pool::tick_math::get_sqrt_price_at_tick(tick_upper), amount_in, false);
                 (liquidity, get_delta_b(current_sqrt_price, clmm_pool::tick_math::get_sqrt_price_at_tick(tick_lower), liquidity, true))
             };
@@ -337,7 +349,7 @@ module clmm_pool::clmm_math {
                     false
                 ), 0)
             } else {
-                assert!(integer_mate::i32::gte(current_tick, tick_lower), 3018);
+                assert!(integer_mate::i32::gte(current_tick, tick_lower), ECurrentTickOutsideRange);
                 let liquidity = get_liquidity_from_b(clmm_pool::tick_math::get_sqrt_price_at_tick(tick_lower), current_sqrt_price, amount_in, false);
                 (liquidity, get_delta_a(current_sqrt_price, clmm_pool::tick_math::get_sqrt_price_at_tick(tick_upper), liquidity, true))
             };
@@ -385,13 +397,16 @@ module clmm_pool::clmm_math {
     /// 
     /// # Returns
     /// The calculated liquidity amount
+    /// 
+    /// # Aborts
+    /// * If the sqrt_price_diff is zero (error code: EZeroSqrtPriceDiff)
     public fun get_liquidity_from_b(sqrt_price_a: u128, sqrt_price_b: u128, amount: u64, round_up: bool): u128 {
         let sqrt_price_diff = if (sqrt_price_a > sqrt_price_b) {
             sqrt_price_a - sqrt_price_b
         } else {
             sqrt_price_b - sqrt_price_a
         };
-        assert!(sqrt_price_diff > 0, 3020);
+        assert!(sqrt_price_diff > 0, EZeroSqrtPriceDiff);
         integer_mate::math_u256::div_round((amount as u256) << 64, sqrt_price_diff as u256, round_up) as u128
     }
 
@@ -408,16 +423,16 @@ module clmm_pool::clmm_math {
     /// The new square root price after the operation
     /// 
     /// # Aborts
-    /// * If the calculation would overflow (error code: 2)
-    /// * If the resulting price would exceed maximum allowed price (error code: 0)
-    /// * If the resulting price would be below minimum allowed price (error code: 1)
+    /// * If the calculation would overflow (error code: ECalculationOverflow)
+    /// * If the resulting price would exceed maximum allowed price (error code: EPriceExceedsMax)
+    /// * If the resulting price would be below minimum allowed price (error code: EPriceBelowMin)
     public fun get_next_sqrt_price_a_up(sqrt_price: u128, liquidity: u128, amount: u64, add: bool): u128 {
         if (amount == 0) {
             return sqrt_price
         };
         let (product, overflow) = integer_mate::math_u256::checked_shlw(integer_mate::full_math_u128::full_mul(sqrt_price, liquidity));
         if (overflow) {
-            abort 2
+            abort ECalculationOverflow
         };
         let next_sqrt_price = if (add) {
             integer_mate::math_u256::div_round(
@@ -433,10 +448,10 @@ module clmm_pool::clmm_math {
             ) as u128
         };
         if (next_sqrt_price > clmm_pool::tick_math::max_sqrt_price()) {
-            abort 0
+            abort EPriceExceedsMax
         };
         if (next_sqrt_price < clmm_pool::tick_math::min_sqrt_price()) {
-            abort 1
+            abort EPriceBelowMin
         };
         next_sqrt_price
     }
@@ -455,8 +470,8 @@ module clmm_pool::clmm_math {
     /// 
     /// # Aborts
     /// * If the calculation would overflow
-    /// * If the resulting price would exceed maximum allowed price (error code: 0)
-    /// * If the resulting price would be below minimum allowed price (error code: 1)
+    /// * If the resulting price would exceed maximum allowed price (error code: EPriceExceedsMax)
+    /// * If the resulting price would be below minimum allowed price (error code: EPriceBelowMin)
     public fun get_next_sqrt_price_b_down(sqrt_price: u128, liquidity: u128, amount: u64, add: bool): u128 {
         let next_sqrt_price = if (add) {
             sqrt_price + integer_mate::math_u128::checked_div_round((amount as u128) << 64, liquidity, !add)
@@ -464,10 +479,10 @@ module clmm_pool::clmm_math {
             sqrt_price - integer_mate::math_u128::checked_div_round((amount as u128) << 64, liquidity, !add)
         };
         if (next_sqrt_price > clmm_pool::tick_math::max_sqrt_price()) {
-            abort 0
+            abort EPriceExceedsMax
         };
         if (next_sqrt_price < clmm_pool::tick_math::min_sqrt_price()) {
-            abort 1
+            abort EPriceBelowMin
         };
         next_sqrt_price
     }
@@ -486,8 +501,8 @@ module clmm_pool::clmm_math {
     /// 
     /// # Aborts
     /// * If the calculation would overflow
-    /// * If the resulting price would exceed maximum allowed price (error code: 0)
-    /// * If the resulting price would be below minimum allowed price (error code: 1)
+    /// * If the resulting price would exceed maximum allowed price (error code: EPriceExceedsMax)
+    /// * If the resulting price would be below minimum allowed price (error code: EPriceBelowMin)
     public fun get_next_sqrt_price_from_input(sqrt_price: u128, liquidity: u128, amount: u64, is_token_a: bool): u128 {
         if (is_token_a) {
             get_next_sqrt_price_a_up(sqrt_price, liquidity, amount, true)
@@ -510,8 +525,8 @@ module clmm_pool::clmm_math {
     /// 
     /// # Aborts
     /// * If the calculation would overflow
-    /// * If the resulting price would exceed maximum allowed price (error code: 0)
-    /// * If the resulting price would be below minimum allowed price (error code: 1)
+    /// * If the resulting price would exceed maximum allowed price (error code: EPriceExceedsMax)
+    /// * If the resulting price would be below minimum allowed price (error code: EPriceBelowMin)
     public fun get_next_sqrt_price_from_output(sqrt_price: u128, liquidity: u128, amount: u64, is_token_a: bool): u128 {
         if (is_token_a) {
             get_next_sqrt_price_b_down(sqrt_price, liquidity, amount, false)

@@ -36,6 +36,8 @@ module clmm_pool::config {
     const EUnstakedLiquidityFeeRateExceedsMax: u64 = 11;
     const EEmptyGaugeIds: u64 = 12;
 
+    const INITIAL_PROTOCOL_FEE_RATE: u64 = 2000;
+
     /// Capability for administrative functions in the protocol.
     /// This capability is required for managing global settings and protocol parameters.
     /// 
@@ -482,7 +484,7 @@ module clmm_pool::config {
     fun init(ctx: &mut sui::tx_context::TxContext) {
         let mut global_config = GlobalConfig {
             id: sui::object::new(ctx),
-            protocol_fee_rate : 2000, 
+            protocol_fee_rate : INITIAL_PROTOCOL_FEE_RATE, 
             unstaked_liquidity_fee_rate : 0, 
             fee_tiers: sui::vec_map::empty<u32, FeeTier>(),
             acl: clmm_pool::acl::new(ctx),
@@ -691,7 +693,7 @@ module clmm_pool::config {
     /// * If the new fee rate exceeds the maximum allowed rate (error code: EProtocolFeeRateExceedsMax)
     /// * If the caller does not have pool manager role
     public fun update_protocol_fee_rate(global_config: &mut GlobalConfig, new_fee_rate: u64, ctx: &mut sui::tx_context::TxContext) {
-        assert!(new_fee_rate <= 3000, EProtocolFeeRateExceedsMax);
+        assert!(new_fee_rate <= max_protocol_fee_rate(), EProtocolFeeRateExceedsMax);
         checked_package_version(global_config);
         check_pool_manager_role(global_config, sui::tx_context::sender(ctx));
         global_config.protocol_fee_rate = new_fee_rate;
@@ -732,7 +734,7 @@ module clmm_pool::config {
     public fun test_init(ctx: &mut sui::tx_context::TxContext) {
         let mut global_config = GlobalConfig {
             id: sui::object::new(ctx),
-            protocol_fee_rate: 2000,
+            protocol_fee_rate: INITIAL_PROTOCOL_FEE_RATE,
             unstaked_liquidity_fee_rate: 0,
             fee_tiers: sui::vec_map::empty<u32, FeeTier>(),
             acl: clmm_pool::acl::new(ctx),
@@ -756,7 +758,7 @@ module clmm_pool::config {
        scenario.next_tx( admin);
         {
             let global_config = scenario.take_shared<GlobalConfig>();
-            assert!(protocol_fee_rate(&global_config) == 2000, 50);
+            assert!(protocol_fee_rate(&global_config) == INITIAL_PROTOCOL_FEE_RATE, 50);
             assert!(unstaked_liquidity_fee_rate(&global_config) == 0, 51);
             sui::test_scenario::return_shared(global_config);
         };

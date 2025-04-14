@@ -23,6 +23,15 @@
 /// * Partner fee update events
 /// * Partner access control events
 module clmm_pool::partner {
+    /// Error codes for the partner module
+    const EPartnersNotEmpty: u64 = 1;
+    const EInvalidFeeRate: u64 = 2;
+    const EPartnerIdMismatch: u64 = 3;
+    const ENoBalance: u64 = 4;
+    const EInvalidName: u64 = 5;
+    const EInvalidTimeRange: u64 = 6;
+    const EInvalidStartTime: u64 = 7;
+
     /// Represents the collection of registered partners in the system.
     /// This structure maintains a mapping of partner names to their unique identifiers.
     /// 
@@ -165,8 +174,8 @@ module clmm_pool::partner {
     /// 
     /// # Abort Conditions
     /// * If the package version check fails
-    /// * If the partner capability ID doesn't match the partner ID (error code: 3)
-    /// * If the partner doesn't have a balance for the specified token type (error code: 4)
+    /// * If the partner capability ID doesn't match the partner ID (error code: EPartnerIdMismatch)
+    /// * If the partner doesn't have a balance for the specified token type (error code: ENoBalance)
     /// 
     /// # Events
     /// * Emits ClaimRefFeeEvent with the claimed amount and token type
@@ -177,9 +186,9 @@ module clmm_pool::partner {
         ctx: &mut sui::tx_context::TxContext
     ) {
         clmm_pool::config::checked_package_version(global_config);
-        assert!(partner_cap.partner_id == sui::object::id<Partner>(partner), 3);
+        assert!(partner_cap.partner_id == sui::object::id<Partner>(partner), EPartnerIdMismatch);
         let type_name = std::string::from_ascii(std::type_name::into_string(std::type_name::get<CoinType>()));
-        assert!(sui::bag::contains<std::string::String>(&partner.balances, type_name), 4);
+        assert!(sui::bag::contains<std::string::String>(&partner.balances, type_name), ENoBalance);
         let balance = sui::bag::remove<std::string::String, sui::balance::Balance<CoinType>>(&mut partner.balances, type_name);
         let amount = sui::balance::value<CoinType>(&balance);
         sui::transfer::public_transfer<sui::coin::Coin<CoinType>>(
@@ -211,11 +220,11 @@ module clmm_pool::partner {
     /// # Abort Conditions
     /// * If the package version check fails
     /// * If the caller doesn't have the partner manager role
-    /// * If end_time is less than or equal to start_time (error code: 6)
-    /// * If start_time is less than current time (error code: 7)
-    /// * If ref_fee_rate is greater than or equal to 10000 (error code: 2)
-    /// * If name is empty (error code: 5)
-    /// * If a partner with the same name already exists (error code: 5)
+    /// * If end_time is less than or equal to start_time (error code: EInvalidTimeRange)
+    /// * If start_time is less than current time (error code: EInvalidStartTime)
+    /// * If ref_fee_rate is greater than or equal to 10000 (error code: EInvalidFeeRate)
+    /// * If name is empty (error code: EInvalidName)
+    /// * If a partner with the same name already exists (error code: EInvalidName)
     /// 
     /// # Events
     /// * Emits CreatePartnerEvent with the new partner's details
@@ -236,11 +245,11 @@ module clmm_pool::partner {
         clock: &sui::clock::Clock,
         ctx: &mut sui::tx_context::TxContext
     ) {
-        assert!(end_time > start_time, 6);
-        assert!(start_time >= sui::clock::timestamp_ms(clock) / 1000, 7);
-        assert!(ref_fee_rate < 10000, 2);
-        assert!(!std::string::is_empty(&name), 5);
-        assert!(!sui::vec_map::contains<std::string::String, sui::object::ID>(&partners.partners, &name), 5);
+        assert!(end_time > start_time, EInvalidTimeRange);
+        assert!(start_time >= sui::clock::timestamp_ms(clock) / 1000, EInvalidStartTime);
+        assert!(ref_fee_rate < 10000, EInvalidFeeRate);
+        assert!(!std::string::is_empty(&name), EInvalidName);
+        assert!(!sui::vec_map::contains<std::string::String, sui::object::ID>(&partners.partners, &name), EInvalidName);
         clmm_pool::config::checked_package_version(global_config);
         clmm_pool::config::check_partner_manager_role(global_config, sui::tx_context::sender(ctx));
         let partner = Partner {
@@ -401,7 +410,7 @@ module clmm_pool::partner {
     /// # Abort Conditions
     /// * If the package version check fails
     /// * If the caller doesn't have the partner manager role
-    /// * If new_fee_rate is greater than or equal to 10000 (error code: 2)
+    /// * If new_fee_rate is greater than or equal to 10000 (error code: EInvalidFeeRate)
     /// 
     /// # Events
     /// * Emits UpdateRefFeeRateEvent with the old and new fee rates
@@ -411,7 +420,7 @@ module clmm_pool::partner {
         new_fee_rate: u64,
         ctx: &mut sui::tx_context::TxContext
     ) {
-        assert!(new_fee_rate < 10000, 2);
+        assert!(new_fee_rate < 10000, EInvalidFeeRate);
         clmm_pool::config::checked_package_version(global_config);
         clmm_pool::config::check_partner_manager_role(global_config, sui::tx_context::sender(ctx));
         partner.ref_fee_rate = new_fee_rate;
@@ -437,8 +446,8 @@ module clmm_pool::partner {
     /// # Abort Conditions
     /// * If the package version check fails
     /// * If the caller doesn't have the partner manager role
-    /// * If end_time is less than or equal to start_time (error code: 6)
-    /// * If end_time is less than current time (error code: 6)
+    /// * If end_time is less than or equal to start_time (error code: EInvalidTimeRange)
+    /// * If end_time is less than current time (error code: EInvalidTimeRange)
     /// 
     /// # Events
     /// * Emits UpdateTimeRangeEvent with the new time range
@@ -450,8 +459,8 @@ module clmm_pool::partner {
         clock: &sui::clock::Clock,
         ctx: &mut sui::tx_context::TxContext
     ) {
-        assert!(end_time > start_time, 6);
-        assert!(end_time > sui::clock::timestamp_ms(clock) / 1000, 6);
+        assert!(end_time > start_time, EInvalidTimeRange);
+        assert!(end_time > sui::clock::timestamp_ms(clock) / 1000, EInvalidTimeRange);
         clmm_pool::config::checked_package_version(global_config);
         clmm_pool::config::check_partner_manager_role(global_config, sui::tx_context::sender(ctx));
         partner.start_time = start_time;
@@ -497,7 +506,7 @@ module clmm_pool::partner {
             let partners = scenario.take_shared<Partners>();
             
             // Check that partners collection is empty
-            assert!(sui::vec_map::is_empty(&partners.partners), 1);
+            assert!(sui::vec_map::is_empty(&partners.partners), EPartnersNotEmpty);
             
             sui::test_scenario::return_shared(partners);
         };

@@ -23,9 +23,15 @@
 /// * Pool ownership transfer events
 /// * Pool configuration change events
 module clmm_pool::factory {
-    use sui::object;
-    use sui::package;
-    use move_stl::linked_table;
+
+    /// Error codes for the factory module
+    const EPoolAlreadyExists: u64 = 1;
+    const EInvalidSqrtPrice: u64 = 2;
+    const ESameCoinTypes: u64 = 3;
+    const EExceededMaxAmountB: u64 = 4;
+    const EExceededMaxAmountA: u64 = 5;
+    const EInvalidCoinOrder: u64 = 6;
+    const EInvalidBytesLength: u64 = 8;
 
     /// Represents the factory state for pool management.
     /// This structure is used to maintain factory-level state and settings.
@@ -217,9 +223,9 @@ module clmm_pool::factory {
     /// The newly created pool object
     /// 
     /// # Abort Conditions
-    /// * If the current square root price is out of valid range (error code: 2)
-    /// * If both coin types are the same (error code: 3)
-    /// * If a pool with the same key already exists (error code: 1)
+    /// * If the current square root price is out of valid range (error code: EInvalidSqrtPrice)
+    /// * If both coin types are the same (error code: ESameCoinTypes)
+    /// * If a pool with the same key already exists (error code: EPoolAlreadyExists)
     /// 
     /// # Events
     /// * Emits a CreatePoolEvent with pool details
@@ -235,13 +241,13 @@ module clmm_pool::factory {
         clock: &sui::clock::Clock,
         ctx: &mut sui::tx_context::TxContext
     ): clmm_pool::pool::Pool<CoinTypeA, CoinTypeB> {
-        assert!(current_sqrt_price >= clmm_pool::tick_math::min_sqrt_price() && current_sqrt_price <= clmm_pool::tick_math::max_sqrt_price(), 2);
+        assert!(current_sqrt_price >= clmm_pool::tick_math::min_sqrt_price() && current_sqrt_price <= clmm_pool::tick_math::max_sqrt_price(), EInvalidSqrtPrice);
         let coin_type_a = std::type_name::get<CoinTypeA>();
         let coin_type_b = std::type_name::get<CoinTypeB>();
-        assert!(coin_type_a != coin_type_b, 3);
+        assert!(coin_type_a != coin_type_b, ESameCoinTypes);
         let pool_key = new_pool_key<CoinTypeA, CoinTypeB>(tick_spacing);
         if (move_stl::linked_table::contains<sui::object::ID, PoolSimpleInfo>(&pools.list, pool_key)) {
-            abort 1
+            abort EPoolAlreadyExists
         };
         let pool_url = if (std::string::length(&url) == 0) {
             std::string::utf8(b"")
@@ -313,8 +319,8 @@ module clmm_pool::factory {
     /// * If the current square root price is out of valid range
     /// * If both coin types are the same
     /// * If a pool with the same key already exists
-    /// * If the amount of token B exceeds the maximum specified (error code: 4)
-    /// * If the amount of token A exceeds the maximum specified (error code: 5)
+    /// * If the amount of token B exceeds the maximum specified (error code: EExceededMaxAmountB)
+    /// * If the amount of token A exceeds the maximum specified (error code: EExceededMaxAmountA)
     public fun create_pool_with_liquidity<CoinTypeA, CoinTypeB>(
         pools: &mut Pools,
         global_config: &clmm_pool::config::GlobalConfig,
@@ -369,9 +375,9 @@ module clmm_pool::factory {
         );
         let (amount_a, amount_b) = clmm_pool::pool::add_liquidity_pay_amount<CoinTypeA, CoinTypeB>(&receipt);
         if (fix_amount_a) {
-            assert!(amount_b <= liquidity_amount_b, 4);
+            assert!(amount_b <= liquidity_amount_b, EExceededMaxAmountB);
         } else {
-            assert!(amount_a <= liquidity_amount_a, 5);
+            assert!(amount_a <= liquidity_amount_a, EExceededMaxAmountA);
         };
         clmm_pool::pool::repay_add_liquidity<CoinTypeA, CoinTypeB>(
             global_config,
@@ -478,7 +484,7 @@ module clmm_pool::factory {
     /// A unique ID for the pool
     /// 
     /// # Abort Conditions
-    /// * If the coin types are in lexicographical order (error code: 6)
+    /// * If the coin types are in lexicographical order (error code: EInvalidCoinOrder)
     public fun new_pool_key<CoinTypeA, CoinTypeB>(tick_spacing: u32): sui::object::ID {
         let type_name_a = std::type_name::into_string(std::type_name::get<CoinTypeA>());
         let mut bytes_a = *std::ascii::as_bytes(&type_name_a);
@@ -489,12 +495,10 @@ module clmm_pool::factory {
         while (index < std::vector::length<u8>(bytes_b)) {
             let byte_b = *std::vector::borrow<u8>(bytes_b, index);
             let should_compare = !swapped && index < std::vector::length<u8>(&bytes_a);
-            let error_code;
             if (should_compare) {
                 let byte_a = *std::vector::borrow<u8>(&bytes_a, index);
                 if (byte_a < byte_b) {
-                    error_code = 6;
-                    abort error_code
+                    abort EInvalidCoinOrder
                 };
                 if (byte_a > byte_b) {
                     swapped = true;
@@ -503,12 +507,10 @@ module clmm_pool::factory {
             std::vector::push_back<u8>(&mut bytes_a, byte_b);
             index = index + 1;
             continue;
-            error_code = 7;
-            abort error_code
         };
         if (!swapped) {
             if (std::vector::length<u8>(&bytes_a) < std::vector::length<u8>(bytes_b)) {
-                abort 8
+                abort EInvalidBytesLength
             };
         };
         std::vector::append<u8>(&mut bytes_a, sui::bcs::to_bytes<u32>(&tick_spacing));
@@ -582,20 +584,15 @@ module clmm_pool::factory {
             init(FACTORY { dummy_field: false }, scenario.ctx());
         };
 
-        // Verify pools object and publisher
         scenario.next_tx(admin);
         {
             let pools = scenario.take_from_sender<Pools>();
             let publisher = scenario.take_from_sender<sui::package::Publisher>();
             
-            // Verify that pools and publisher were created and transferred
-            assert!(sui::object::id(&pools) != sui::object::id(&publisher), 1);
+            assert!(sui::object::id(&pools) != sui::object::id(&publisher), EPoolAlreadyExists);
+            assert!(move_stl::linked_table::is_empty(&pools.list), EInvalidSqrtPrice);
+            assert!(pools.index == 0, ESameCoinTypes);
             
-            // Verify pools initial state
-            assert!(move_stl::linked_table::is_empty(&pools.list), 2);
-            assert!(pools.index == 0, 3);
-            
-            // Return objects to scenario
             scenario.return_to_sender(pools);
             scenario.return_to_sender(publisher);
         };
