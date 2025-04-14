@@ -1,7 +1,6 @@
 #[test_only]
 module clmm_pool::clmm_math_tests {
     use clmm_pool::clmm_math;
-    use std::debug;
 
     #[test]
     fun test_compute_swap_step_zero_liquidity() {
@@ -37,23 +36,22 @@ module clmm_pool::clmm_math_tests {
         assert!(fee_amount == 1, 4); // 0.3% of 5
     }
 
-    // TODO
-    // #[test]
-    // fun test_compute_swap_step_b2a_by_amount_in() {
-    //     let (amount_in, amount_out, next_sqrt_price, fee_amount) = clmm_math::compute_swap_step(
-    //         100000 << 64, // current_sqrt_price
-    //         200000 << 64, // target_sqrt_price (increased difference)
-    //         1000000 << 64, // liquidity (decreased)
-    //         5,    // amount
-    //         3000,   // fee_rate (0.3% = 3000/1000000)
-    //         false,  // b2a
-    //         true    // by_amount_in
-    //     );
-    //     assert!(amount_in == 4, 1); // 5 - 0.3% fee
-    //     assert!(amount_out > 0, 2);
-    //     assert!(next_sqrt_price > 100000 << 64, 3); // Price should increase for b2a
-    //     assert!(fee_amount == 1, 4); // 0.3% of 5
-    // }
+    #[test]
+    fun test_compute_swap_step_b2a_by_amount_in() {
+        let (amount_in, amount_out, next_sqrt_price, fee_amount) = clmm_math::compute_swap_step(
+            100000 << 64, // current_sqrt_price
+            5000000 << 64, // target_sqrt_price (increased difference)
+            20000000 << 64, // liquidity (decreased)
+            500000000000000,    // amount
+            3000,   // fee_rate (0.3% = 3000/1000000)
+            false,  // b2a
+            true    // by_amount_in
+        );
+        assert!(amount_in == 498500000000000, 1); // 5 - 0.3% fee
+        assert!(amount_out == 49849, 2);
+        assert!(next_sqrt_price == 1844674407370955186525000, 3); // Price should increase for b2a
+        assert!(fee_amount == 1500000000000, 4); // 0.3% of 5
+    }
 
     #[test]
     fun test_compute_swap_step_a2b_by_amount_out() {
@@ -139,21 +137,6 @@ module clmm_pool::clmm_math_tests {
         assert!(clmm_math::fee_rate_denominator() == 1000000, 1);
     }
 
-// TODO
-    // #[test]
-    // #[expected_failure(abort_code = 2)]
-    // fun test_compute_swap_step_overflow() {
-    //     clmm_math::compute_swap_step(
-    //         100000 << 64, // current_sqrt_price
-    //         105000 << 64, // target_sqrt_price
-    //         100000000 << 64, // liquidity 
-    //         1000,   // amount
-    //         3000,   // fee_rate (0.3% = 3000/1000000)
-    //         false,  // b2a
-    //         true    // by_amount_in
-    //     );
-    // }
-
     #[test]
     fun test_compute_swap_step_b2a_large_amount() {
         let (amount_in, amount_out, next_sqrt_price, fee_amount) = clmm_math::compute_swap_step(
@@ -171,74 +154,71 @@ module clmm_pool::clmm_math_tests {
         assert!(fee_amount == 3000, 4); // 0.3% of 1000000
     }
 
-    // TODO
-    // #[test]
-    // fun test_compute_swap_step_b2a_large_amount_small_diff() {
-    //     let (amount_in, amount_out, next_sqrt_price, fee_amount) = clmm_math::compute_swap_step(
-    //         100000 << 64, // current_sqrt_price
-    //         105000 << 64, // target_sqrt_price (small difference)
-    //         10000000 << 64, // liquidity
-    //         1000000,    // amount (large amount)
-    //         3000,   // fee_rate (0.3% = 3000/1000000)
-    //         false,  // b2a
-    //         true    // by_amount_in
-    //     );
-    //     assert!(amount_in == 997000, 1); // 1000000 - 0.3% fee
-    //     assert!(amount_out > 0, 2);
-    //     assert!(next_sqrt_price > 100000 << 64, 3); // Price should increase for b2a
-    //     assert!(fee_amount == 3000, 4); // 0.3% of 1000000
-    // }
+    #[test]
+    fun test_compute_swap_step_b2a_large_amount_small_diff() {
+        let (amount_in, amount_out, next_sqrt_price, fee_amount) = clmm_math::compute_swap_step(
+            100000 << 64, // current_sqrt_price
+            105000 << 64, // target_sqrt_price (small difference)
+            10000000 << 64, // liquidity
+            1000000,    // amount (large amount)
+            3000,   // fee_rate (0.3% = 3000/1000000)
+            false,  // b2a
+            true    // by_amount_in
+        );
+        assert!(amount_in == 997000, 1); // 1000000 - 0.3% fee
+        assert!(amount_out == 0, 2);
+        assert!(next_sqrt_price == (100000 << 64), 3); // Price should increase for b2a
+        assert!(fee_amount == 3000, 4); // 0.3% of 1000000
+    }
 
-    // #[test]
-    // fun test_compute_swap_step_b2a_large_amount_large_diff() {
-    //     let (amount_in, amount_out, next_sqrt_price, fee_amount) = clmm_math::compute_swap_step(
-    //         100000 << 64, // current_sqrt_price
-    //         300000 << 64, // target_sqrt_price (large difference)
-    //         10000000 << 64, // liquidity
-    //         1000000,    // amount (large amount)
-    //         3000,   // fee_rate (0.3% = 3000/1000000)
-    //         false,  // b2a
-    //         true    // by_amount_in
-    //     );
-    //     assert!(amount_in == 997000, 1); // 1000000 - 0.3% fee
-    //     assert!(amount_out > 0, 2);
-    //     assert!(next_sqrt_price > 100000 << 64, 3); // Price should increase for b2a
-    //     assert!(fee_amount == 3000, 4); // 0.3% of 1000000
-    // }
+    #[test]
+    fun test_compute_swap_step_b2a_large_amount_large_diff() {
+        let (amount_in, amount_out, next_sqrt_price, fee_amount) = clmm_math::compute_swap_step(
+            100000 << 64, // current_sqrt_price
+            300000 << 64, // target_sqrt_price (large difference)
+            10000000 << 64, // liquidity
+            1000000,    // amount (large amount)
+            3000,   // fee_rate (0.3% = 3000/1000000)
+            false,  // b2a
+            true    // by_amount_in
+        );
+        assert!(amount_in == 997000, 1); // 1000000 - 0.3% fee
+        assert!(amount_out == 0, 2);
+        assert!(next_sqrt_price == 100000 << 64, 3); // Price should increase for b2a
+        assert!(fee_amount == 3000, 4); // 0.3% of 1000000
+    }
 
-    // TODO
-    // #[test]
-    // fun test_compute_swap_step_b2a_large_amount_large_liquidity() {
-    //     let (amount_in, amount_out, next_sqrt_price, fee_amount) = clmm_math::compute_swap_step(
-    //         100000 << 64, // current_sqrt_price
-    //         150000 << 64, // target_sqrt_price
-    //         1000000000 << 64, // liquidity (large liquidity)
-    //         1000000,    // amount (large amount)
-    //         3000,   // fee_rate (0.3% = 3000/1000000)
-    //         false,  // b2a
-    //         true    // by_amount_in
-    //     );
-    //     assert!(amount_in == 997000, 1); // 1000000 - 0.3% fee
-    //     assert!(amount_out > 0, 2);
-    //     assert!(next_sqrt_price > 100000 << 64, 3); // Price should increase for b2a
-    //     assert!(fee_amount == 3000, 4); // 0.3% of 1000000
-    // }
+    #[test]
+    fun test_compute_swap_step_b2a_large_amount_large_liquidity() {
+        let (amount_in, amount_out, next_sqrt_price, fee_amount) = clmm_math::compute_swap_step(
+            100000 << 64, // current_sqrt_price
+            150000 << 64, // target_sqrt_price
+            1000000000 << 64, // liquidity (large liquidity)
+            1000000,    // amount (large amount)
+            3000,   // fee_rate (0.3% = 3000/1000000)
+            false,  // b2a
+            true    // by_amount_in
+        );
+        assert!(amount_in == 997000, 1); // 1000000 - 0.3% fee
+        assert!(amount_out == 0, 2);
+        assert!(next_sqrt_price == 100000 << 64, 3); // Price should increase for b2a
+        assert!(fee_amount == 3000, 4); // 0.3% of 1000000
+    }
 
-// TODO
-    // #[test]
-    // fun test_compute_swap_step_b2a_large_amount_small_liquidity() {
-    //     let (amount_in, amount_out, next_sqrt_price, fee_amount) = clmm_math::compute_swap_step(
-    //         100000 << 64, // current_sqrt_price
-    //         110000 << 64, // target_sqrt_price (higher than current for b2a)
-    //         1000000 << 64, // liquidity
-    //         1000000,    // amount (large amount)
-    //         3000,   // fee_rate (0.3% = 3000/1000000)
-    //         false,  // b2a
-    //         true    // by_amount_in
-    //     );
-    //     assert!(amount_in == 997000, 1); // 1000000 - 0.3% fee
-    //     assert!(amount_out > 0, 2);
-    //     assert!(next_sqrt_price > 100000 << 64, 3); // Price should increase for b2a
-    //     assert!(fee_amount == 3000, 4); // 0.3% of 1000000
-    // }
+    #[test]
+    fun test_compute_swap_step_b2a_large_amount_small_liquidity() {
+        let (amount_in, amount_out, next_sqrt_price, fee_amount) = clmm_math::compute_swap_step(
+            100000 << 64, // current_sqrt_price
+            110000 << 64, // target_sqrt_price (higher than current for b2a)
+            1000000 << 64, // liquidity
+            1000000,    // amount (large amount)
+            3000,   // fee_rate (0.3% = 3000/1000000)
+            false,  // b2a
+            true    // by_amount_in
+        );
+        assert!(amount_in == 997000, 1); // 1000000 - 0.3% fee
+        assert!(amount_out == 0, 2);
+        assert!(next_sqrt_price == 100000 << 64, 3); // Price should increase for b2a
+        assert!(fee_amount == 3000, 4); // 0.3% of 1000000
+    }
 }

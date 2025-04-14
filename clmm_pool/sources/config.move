@@ -22,6 +22,22 @@
 /// * Emergency Manager - Can pause/unpause pools in emergency situations
 /// * Protocol Manager - Can manage protocol-level settings
 module clmm_pool::config {
+    /// Error codes
+    const EFeeTierAlreadyExists: u64 = 1;
+    const EFeeTierNotFound: u64 = 2;
+    const EFeeRateExceedsMax: u64 = 3;
+    const EProtocolFeeRateExceedsMax: u64 = 4;
+    const EPoolManagerRole: u64 = 5;
+    const EFeeTierManagerRole: u64 = 6;
+    const EPartnerManagerRole: u64 = 7;
+    const ERewarderManagerRole: u64 = 8;
+    const EProtocolFeeClaimRole: u64 = 9;
+    const EPackageVersionMismatch: u64 = 10;
+    const EUnstakedLiquidityFeeRateExceedsMax: u64 = 11;
+    const EEmptyGaugeIds: u64 = 12;
+
+    const INITIAL_PROTOCOL_FEE_RATE: u64 = 2000;
+
     /// Capability for administrative functions in the protocol.
     /// This capability is required for managing global settings and protocol parameters.
     /// 
@@ -273,6 +289,17 @@ module clmm_pool::config {
         sui::event::emit<SetRolesEvent>(event);
     }
 
+    /// Checks if the package version matches the expected version.
+    /// 
+    /// # Arguments
+    /// * `config` - Reference to the global configuration
+    /// 
+    /// # Abort Conditions
+    /// * If the package version is not 1 (error code: EPackageVersionMismatch)
+    public fun checked_package_version(config: &GlobalConfig) {
+        assert!(config.package_version == 1, EPackageVersionMismatch);
+    }
+
     /// Adds a new fee tier to the global configuration.
     /// 
     /// # Arguments
@@ -282,12 +309,12 @@ module clmm_pool::config {
     /// * `ctx` - Mutable reference to the transaction context
     /// 
     /// # Abort Conditions
-    /// * If the fee rate exceeds the maximum allowed rate (error code: 3)
-    /// * If a fee tier with the same tick spacing already exists (error code: 1)
+    /// * If the fee rate exceeds the maximum allowed rate (error code: EFeeRateExceedsMax)
+    /// * If a fee tier with the same tick spacing already exists (error code: EFeeTierAlreadyExists)
     /// * If the caller does not have fee tier manager role
     public fun add_fee_tier(config: &mut GlobalConfig, tick_spacing: u32, fee_rate: u64, ctx: &mut sui::tx_context::TxContext) {
-        assert!(fee_rate <= max_fee_rate(), 3);
-        assert!(!sui::vec_map::contains<u32, FeeTier>(&config.fee_tiers, &tick_spacing), 1);
+        assert!(fee_rate <= max_fee_rate(), EFeeRateExceedsMax);
+        assert!(!sui::vec_map::contains<u32, FeeTier>(&config.fee_tiers, &tick_spacing), EFeeTierAlreadyExists);
         checked_package_version(config);
         check_fee_tier_manager_role(config, sui::tx_context::sender(ctx));
         let fee_tier = FeeTier {
@@ -309,9 +336,9 @@ module clmm_pool::config {
     /// * `member` - Address to check
     /// 
     /// # Abort Conditions
-    /// * If the address does not have the fee tier manager role (error code: 6)
+    /// * If the address does not have the fee tier manager role (error code: EFeeTierManagerRole)
     public fun check_fee_tier_manager_role(config: &GlobalConfig, member: address) {
-        assert!(clmm_pool::acl::has_role(&config.acl, member, 1), 6);
+        assert!(clmm_pool::acl::has_role(&config.acl, member, clmm_pool::acl::fee_tier_manager_role()), EFeeTierManagerRole);
     }
 
     /// Checks if an address has the partner manager role.
@@ -321,9 +348,9 @@ module clmm_pool::config {
     /// * `member` - Address to check
     /// 
     /// # Abort Conditions
-    /// * If the address does not have the partner manager role (error code: 7)
+    /// * If the address does not have the partner manager role (error code: EPartnerManagerRole)
     public fun check_partner_manager_role(config: &GlobalConfig, member: address) {
-        assert!(clmm_pool::acl::has_role(&config.acl, member, 3), 7);
+        assert!(clmm_pool::acl::has_role(&config.acl, member, clmm_pool::acl::partner_manager_role()), EPartnerManagerRole);
     }
 
     /// Checks if an address has the pool manager role.
@@ -333,9 +360,9 @@ module clmm_pool::config {
     /// * `member` - Address to check
     /// 
     /// # Abort Conditions
-    /// * If the address does not have the pool manager role (error code: 5)
+    /// * If the address does not have the pool manager role (error code: EPoolManagerRole)
     public fun check_pool_manager_role(config: &GlobalConfig, member: address) {
-        assert!(clmm_pool::acl::has_role(&config.acl, member, 0), 5);
+        assert!(clmm_pool::acl::has_role(&config.acl, member, clmm_pool::acl::pool_manager_role()), EPoolManagerRole);
     }
 
     /// Checks if an address has the protocol fee claim role.
@@ -345,9 +372,9 @@ module clmm_pool::config {
     /// * `member` - Address to check
     /// 
     /// # Abort Conditions
-    /// * If the address does not have the protocol fee claim role (error code: 9)
+    /// * If the address does not have the protocol fee claim role (error code: EProtocolFeeClaimRole)
     public fun check_protocol_fee_claim_role(config: &GlobalConfig, member: address) {
-        assert!(clmm_pool::acl::has_role(&config.acl, member, 2), 9);
+        assert!(clmm_pool::acl::has_role(&config.acl, member, clmm_pool::acl::protocol_fee_claim_role()), EProtocolFeeClaimRole);
     }
 
     /// Checks if an address has the rewarder manager role.
@@ -357,20 +384,9 @@ module clmm_pool::config {
     /// * `member` - Address to check
     /// 
     /// # Abort Conditions
-    /// * If the address does not have the rewarder manager role (error code: 8)
+    /// * If the address does not have the rewarder manager role (error code: ERewarderManagerRole)
     public fun check_rewarder_manager_role(config: &GlobalConfig, member: address) {
-        assert!(clmm_pool::acl::has_role(&config.acl, member, 4), 8);
-    }
-
-    /// Checks if the package version matches the expected version.
-    /// 
-    /// # Arguments
-    /// * `config` - Reference to the global configuration
-    /// 
-    /// # Abort Conditions
-    /// * If the package version is not 1 (error code: 10)
-    public fun checked_package_version(config: &GlobalConfig) {
-        assert!(config.package_version == 1, 10);
+        assert!(clmm_pool::acl::has_role(&config.acl, member, clmm_pool::acl::rewarder_manager_role()), ERewarderManagerRole);
     }
 
     /// Returns the default unstaked fee rate.
@@ -389,10 +405,10 @@ module clmm_pool::config {
     /// * `ctx` - Mutable reference to the transaction context
     /// 
     /// # Abort Conditions
-    /// * If the fee tier does not exist (error code: 2)
+    /// * If the fee tier does not exist (error code: EFeeTierNotFound)
     /// * If the caller does not have fee tier manager role
     public fun delete_fee_tier(config: &mut GlobalConfig, tick_spacing: u32, ctx: &mut sui::tx_context::TxContext) {
-        assert!(sui::vec_map::contains<u32, FeeTier>(&config.fee_tiers, &tick_spacing), 2);
+        assert!(sui::vec_map::contains<u32, FeeTier>(&config.fee_tiers, &tick_spacing), EFeeTierNotFound);
         checked_package_version(config);
         check_fee_tier_manager_role(config, sui::tx_context::sender(ctx));
         let (_, fee_tier) = sui::vec_map::remove<u32, FeeTier>(&mut config.fee_tiers, &tick_spacing);
@@ -444,9 +460,9 @@ module clmm_pool::config {
     /// The fee rate as a u64
     /// 
     /// # Abort Conditions
-    /// * If the fee tier does not exist (error code: 2)
+    /// * If the fee tier does not exist (error code: EFeeTierNotFound)
     public fun get_fee_rate(tick_spacing: u32, config: &GlobalConfig): u64 {
-        assert!(sui::vec_map::contains<u32, FeeTier>(&config.fee_tiers, &tick_spacing), 2);
+        assert!(sui::vec_map::contains<u32, FeeTier>(&config.fee_tiers, &tick_spacing), EFeeTierNotFound);
         sui::vec_map::get<u32, FeeTier>(&config.fee_tiers, &tick_spacing).fee_rate
     }
 
@@ -468,7 +484,7 @@ module clmm_pool::config {
     fun init(ctx: &mut sui::tx_context::TxContext) {
         let mut global_config = GlobalConfig {
             id: sui::object::new(ctx),
-            protocol_fee_rate : 2000, 
+            protocol_fee_rate : INITIAL_PROTOCOL_FEE_RATE, 
             unstaked_liquidity_fee_rate : 0, 
             fee_tiers: sui::vec_map::empty<u32, FeeTier>(),
             acl: clmm_pool::acl::new(ctx),
@@ -580,8 +596,8 @@ module clmm_pool::config {
     /// * `ctx` - Mutable reference to the transaction context
     /// 
     /// # Abort Conditions
-    /// * If the fee tier does not exist (error code: 2)
-    /// * If the new fee rate exceeds the maximum allowed rate (error code: 3)
+    /// * If the fee tier does not exist (error code: EFeeTierNotFound)
+    /// * If the new fee rate exceeds the maximum allowed rate (error code: EFeeRateExceedsMax)
     /// * If the caller does not have fee tier manager role
     public fun update_fee_tier(
         global_config: &mut GlobalConfig,
@@ -589,8 +605,8 @@ module clmm_pool::config {
         new_fee_rate: u64,
         ctx: &mut sui::tx_context::TxContext
     ) {
-        assert!(sui::vec_map::contains<u32, FeeTier>(&global_config.fee_tiers, &tick_spacing), 2);
-        assert!(new_fee_rate <= max_fee_rate(), 3);
+        assert!(sui::vec_map::contains<u32, FeeTier>(&global_config.fee_tiers, &tick_spacing), EFeeTierNotFound);
+        assert!(new_fee_rate <= max_fee_rate(), EFeeRateExceedsMax);
         checked_package_version(global_config);
         check_fee_tier_manager_role(global_config, sui::tx_context::sender(ctx));
         let fee_tier = sui::vec_map::get_mut<u32, FeeTier>(&mut global_config.fee_tiers, &tick_spacing);
@@ -624,7 +640,7 @@ module clmm_pool::config {
         let length = std::vector::length<sui::object::ID>(&gauge_ids);
         checked_package_version(global_config);
         check_pool_manager_role(global_config, sui::tx_context::sender(ctx));
-        assert!(length > 0, 9223373316755030015);
+        assert!(length > 0, EEmptyGaugeIds);
 
         if (is_alive) {
             while (index < length) {
@@ -674,10 +690,10 @@ module clmm_pool::config {
     /// * `ctx` - Mutable reference to the transaction context
     /// 
     /// # Abort Conditions
-    /// * If the new fee rate exceeds the maximum allowed rate (error code: 4)
+    /// * If the new fee rate exceeds the maximum allowed rate (error code: EProtocolFeeRateExceedsMax)
     /// * If the caller does not have pool manager role
     public fun update_protocol_fee_rate(global_config: &mut GlobalConfig, new_fee_rate: u64, ctx: &mut sui::tx_context::TxContext) {
-        assert!(new_fee_rate <= 3000, 4);
+        assert!(new_fee_rate <= max_protocol_fee_rate(), EProtocolFeeRateExceedsMax);
         checked_package_version(global_config);
         check_pool_manager_role(global_config, sui::tx_context::sender(ctx));
         global_config.protocol_fee_rate = new_fee_rate;
@@ -696,14 +712,14 @@ module clmm_pool::config {
     /// * `ctx` - Mutable reference to the transaction context
     /// 
     /// # Abort Conditions
-    /// * If the new fee rate exceeds the maximum allowed rate (error code: 11)
+    /// * If the new fee rate exceeds the maximum allowed rate (error code: EUnstakedLiquidityFeeRateExceedsMax)
     /// * If the caller does not have pool manager role
     public fun update_unstaked_liquidity_fee_rate(
         global_config: &mut GlobalConfig,
         new_fee_rate: u64,
         ctx: &mut sui::tx_context::TxContext
     ) {
-        assert!(new_fee_rate <= max_unstaked_liquidity_fee_rate(), 11);
+        assert!(new_fee_rate <= max_unstaked_liquidity_fee_rate(), EUnstakedLiquidityFeeRateExceedsMax);
         checked_package_version(global_config);
         check_pool_manager_role(global_config, sui::tx_context::sender(ctx));
         global_config.unstaked_liquidity_fee_rate = new_fee_rate;
@@ -718,7 +734,7 @@ module clmm_pool::config {
     public fun test_init(ctx: &mut sui::tx_context::TxContext) {
         let mut global_config = GlobalConfig {
             id: sui::object::new(ctx),
-            protocol_fee_rate: 2000,
+            protocol_fee_rate: INITIAL_PROTOCOL_FEE_RATE,
             unstaked_liquidity_fee_rate: 0,
             fee_tiers: sui::vec_map::empty<u32, FeeTier>(),
             acl: clmm_pool::acl::new(ctx),
@@ -742,8 +758,8 @@ module clmm_pool::config {
        scenario.next_tx( admin);
         {
             let global_config = scenario.take_shared<GlobalConfig>();
-            assert!(protocol_fee_rate(&global_config) == 2000, 1);
-            assert!(unstaked_liquidity_fee_rate(&global_config) == 0, 2);
+            assert!(protocol_fee_rate(&global_config) == INITIAL_PROTOCOL_FEE_RATE, 50);
+            assert!(unstaked_liquidity_fee_rate(&global_config) == 0, 51);
             sui::test_scenario::return_shared(global_config);
         };
 

@@ -152,7 +152,7 @@ module clmm_pool::config_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 3)]
+    #[expected_failure(abort_code = config::EFeeRateExceedsMax)]
     fun test_fee_tier_validation() {
         let admin = @0x123;
         let mut scenario = test_scenario::begin(admin);
@@ -174,7 +174,7 @@ module clmm_pool::config_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 1)]
+    #[expected_failure(abort_code = config::EFeeTierAlreadyExists)]
     fun test_fee_tier_duplicate_validation() {
         let admin = @0x123;
         let mut scenario = test_scenario::begin(admin);
@@ -206,7 +206,7 @@ module clmm_pool::config_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 2)]
+    #[expected_failure(abort_code = config::EFeeTierNotFound)]
     fun test_fee_tier_not_exists_validation() {
         let admin = @0x123;
         let mut scenario = test_scenario::begin(admin);
@@ -227,39 +227,38 @@ module clmm_pool::config_tests {
         scenario.end();
     }
 
-    // TODO
-    // #[test]
-    // #[expected_failure(abort_code = 9223373316755030015)]
-    // fun test_gauge_management_validation() {
-    //     let admin = @0x123;
-    //     let mut scenario = test_scenario::begin(admin);
+    #[test]
+    #[expected_failure(abort_code = config::EEmptyGaugeIds)]
+    fun test_gauge_management_validation() {
+        let admin = @0x123;
+        let mut scenario = test_scenario::begin(admin);
         
-    //     // Initialize
-    //     {
-    //         config::test_init(scenario.ctx());
-    //     };
+        // Initialize
+        {
+            config::test_init(scenario.ctx());
+        };
 
-    //     // Test empty vector
-    //     scenario.next_tx(admin);
-    //     {
-    //         let admin_cap = scenario.take_from_sender<config::AdminCap>();
-    //         let mut global_config = scenario.take_shared<config::GlobalConfig>();
+        // Test empty vector
+        scenario.next_tx(admin);
+        {
+            let admin_cap = scenario.take_from_sender<config::AdminCap>();
+            let mut global_config = scenario.take_shared<config::GlobalConfig>();
             
-    //         // Create empty vector
-    //         let empty_gauge_ids = vector::empty<sui::object::ID>();
+            // Create empty vector
+            let empty_gauge_ids = vector::empty<sui::object::ID>();
             
-    //         // This should fail with empty vector error
-    //         config::update_gauge_liveness(&mut global_config, empty_gauge_ids, true, scenario.ctx());
+            // This should fail with empty vector error
+            config::update_gauge_liveness(&mut global_config, empty_gauge_ids, true, scenario.ctx());
             
-    //         test_scenario::return_shared(global_config);
-    //         transfer::public_transfer(admin_cap, admin);
-    //     };
+            test_scenario::return_shared(global_config);
+            transfer::public_transfer(admin_cap, admin);
+        };
 
-    //     scenario.end();
-    // }
+        scenario.end();
+    }
 
     #[test]
-    #[expected_failure(abort_code = 5)]
+    #[expected_failure(abort_code = config::EPoolManagerRole)]
     fun test_pool_manager_role_validation() {
         let admin = @0x123;
         let user = @0x456;
@@ -281,7 +280,7 @@ module clmm_pool::config_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 6)]
+    #[expected_failure(abort_code = config::EFeeTierManagerRole)]
     fun test_fee_tier_manager_role_validation() {
         let admin = @0x123;
         let user = @0x456;
@@ -302,7 +301,7 @@ module clmm_pool::config_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 10)]
+    #[expected_failure(abort_code = config::EPackageVersionMismatch)]
     fun test_package_version_validation() {
         let admin = @0x123;
         let mut scenario = test_scenario::begin(admin);
@@ -334,7 +333,7 @@ module clmm_pool::config_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 4)]
+    #[expected_failure(abort_code = config::EProtocolFeeRateExceedsMax)]
     fun test_protocol_fee_rate_validation() {
         let admin = @0x123;
         let mut scenario = test_scenario::begin(admin);
@@ -356,7 +355,7 @@ module clmm_pool::config_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 11)]
+    #[expected_failure(abort_code = config::EUnstakedLiquidityFeeRateExceedsMax)]
     fun test_unstaked_liquidity_fee_rate_validation() {
         let admin = @0x123;
         let mut scenario = test_scenario::begin(admin);

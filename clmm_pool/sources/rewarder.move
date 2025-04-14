@@ -23,6 +23,16 @@
 /// * Reward claim events
 /// * Reward configuration update events
 module clmm_pool::rewarder {
+    /// Error codes for the rewarder module
+    const EMaxRewardersExceeded: u64 = 1;
+    const ERewarderAlreadyExists: u64 = 2;
+    const EInvalidTime: u64 = 3;
+    const EInsufficientBalance: u64 = 4;
+    const ERewarderNotFound: u64 = 5;
+
+    /// Points multiplier for precision in calculations (MAX_U64 * 10^12)
+    const POINTS_MULTIPLIER: u128 = 18446744073709551616000000;
+
     /// Manager for reward distribution in the pool.
     /// Contains information about all rewarders, points, and timing.
     /// 
@@ -117,12 +127,12 @@ module clmm_pool::rewarder {
     /// * `rewarder_manager` - Mutable reference to the rewarder manager
     /// 
     /// # Abort Conditions
-    /// * If the rewarder already exists (error code: 2)
-    /// * If the maximum number of rewarders (3) is exceeded (error code: 1)
+    /// * If the rewarder already exists (error code: ERewarderAlreadyExists)
+    /// * If the maximum number of rewarders (3) is exceeded (error code: EMaxRewardersExceeded)
     public(package) fun add_rewarder<RewardCoinType>(rewarder_manager: &mut RewarderManager) {
         let rewarder_idx = rewarder_index<RewardCoinType>(rewarder_manager);
-        assert!(std::option::is_none<u64>(&rewarder_idx), 2);
-        assert!(std::vector::length<Rewarder>(&rewarder_manager.rewarders) <= 2, 1);
+        assert!(std::option::is_none<u64>(&rewarder_idx), ERewarderAlreadyExists);
+        assert!(std::vector::length<Rewarder>(&rewarder_manager.rewarders) <= 2, EMaxRewardersExceeded);
         let new_rewarder = Rewarder {
             reward_coin: std::type_name::get<RewardCoinType>(),
             emissions_per_second: 0,
@@ -168,7 +178,7 @@ module clmm_pool::rewarder {
     /// Mutable reference to the rewarder configuration
     /// 
     /// # Abort Conditions
-    /// * If the rewarder is not found (error code: 5)
+    /// * If the rewarder is not found (error code: ERewarderNotFound)
     public(package) fun borrow_mut_rewarder<RewardCoinType>(manager: &mut RewarderManager): &mut Rewarder {
         let mut index = 0;
         while (index < std::vector::length<Rewarder>(&manager.rewarders)) {
@@ -177,7 +187,7 @@ module clmm_pool::rewarder {
             };
             index = index + 1;
         };
-        abort 5
+        abort ERewarderNotFound
     }
 
     /// Gets a reference to a specific rewarder configuration.
@@ -189,7 +199,7 @@ module clmm_pool::rewarder {
     /// Reference to the rewarder configuration
     /// 
     /// # Abort Conditions
-    /// * If the rewarder is not found (error code: 5)
+    /// * If the rewarder is not found (error code: ERewarderNotFound)
     public fun borrow_rewarder<RewardCoinType>(manager: &RewarderManager): &Rewarder {
         let mut index = 0;
         while (index < std::vector::length<Rewarder>(&manager.rewarders)) {
@@ -198,7 +208,7 @@ module clmm_pool::rewarder {
             };
             index = index + 1;
         };
-        abort 5
+        abort ERewarderNotFound
     }
 
     /// Deposits reward tokens into the global vault.
@@ -399,11 +409,11 @@ module clmm_pool::rewarder {
     /// * `current_time` - Current timestamp
     /// 
     /// # Abort Conditions
-    /// * If current time is less than last update time (error code: 3)
+    /// * If current time is less than last update time (error code: EInvalidTime)
     public(package) fun settle(manager: &mut RewarderManager, liquidity: u128, current_time: u64) {
         let last_time = manager.last_updated_time;
         manager.last_updated_time = current_time;
-        assert!(last_time <= current_time, 3);
+        assert!(last_time <= current_time, EInvalidTime);
         if (liquidity == 0 || last_time == current_time) {
             return
         };
@@ -420,10 +430,10 @@ module clmm_pool::rewarder {
             );
             index = index + 1;
         };
-        manager.points_released = manager.points_released + (time_delta as u128) * 18446744073709551616000000;
+        manager.points_released = manager.points_released + (time_delta as u128) * POINTS_MULTIPLIER;
         manager.points_growth_global = manager.points_growth_global + integer_mate::full_math_u128::mul_div_floor(
             time_delta as u128,
-            18446744073709551616000000,
+            POINTS_MULTIPLIER,
             liquidity
         );
     }
@@ -438,8 +448,8 @@ module clmm_pool::rewarder {
     /// * `current_time` - Current timestamp
     /// 
     /// # Abort Conditions
-    /// * If the reward token is not found in the vault (error code: 5)
-    /// * If the emission rate exceeds available balance (error code: 4)
+    /// * If the reward token is not found in the vault (error code: ERewarderNotFound)
+    /// * If the emission rate exceeds available balance (error code: EInsufficientBalance)
     public(package) fun update_emission<RewardCoinType>(
         rewarder_vault: &RewarderGlobalVault,
         rewarder_manager: &mut RewarderManager,
@@ -450,12 +460,12 @@ module clmm_pool::rewarder {
         settle(rewarder_manager, liquidity, current_time);
         if (emission_rate > 0) {
             let reward_type = std::type_name::get<RewardCoinType>();
-            assert!(sui::bag::contains<std::type_name::TypeName>(&rewarder_vault.balances, reward_type), 5);
+            assert!(sui::bag::contains<std::type_name::TypeName>(&rewarder_vault.balances, reward_type), ERewarderNotFound);
             assert!(
                 (sui::balance::value<RewardCoinType>(
                     sui::bag::borrow<std::type_name::TypeName, sui::balance::Balance<RewardCoinType>>(&rewarder_vault.balances, reward_type)
                 ) as u128) >= (86400 * emission_rate >> 64),
-                4
+                EInsufficientBalance
             );
         };
         borrow_mut_rewarder<RewardCoinType>(rewarder_manager).emissions_per_second = emission_rate;
@@ -502,7 +512,7 @@ module clmm_pool::rewarder {
         scenario.next_tx(admin);
         {
             let vault = scenario.take_shared<RewarderGlobalVault>();
-            assert!(sui::bag::is_empty(&vault.balances), 1);
+            assert!(sui::bag::is_empty(&vault.balances), EMaxRewardersExceeded);
             sui::test_scenario::return_shared(vault);
         };
 

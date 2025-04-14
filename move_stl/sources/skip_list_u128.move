@@ -339,13 +339,10 @@ module move_stl::skip_list_u128 {
     use sui::tx_context;
     #[test_only]
     use sui::transfer;
-    #[test_only]
-    use std::debug;
 
     #[test_only]
     #[allow(unused_function)]
     fun print_skip_list<V: store>(list: &SkipList<V>) {
-        debug::print(list);
         if (length(list) == 0) {
             return
         };
@@ -353,7 +350,6 @@ module move_stl::skip_list_u128 {
         while (is_some(next_score)) {
             let node = table::borrow(&list.inner, option_u128::borrow(next_score));
             next_score = vector::borrow(&node.nexts, 0);
-            debug::print(node);
         }
     }
 
@@ -508,7 +504,6 @@ module move_stl::skip_list_u128 {
             insert(&mut list, 100000 - n, 0);
             n = n + 1;
         };
-        // debug::print(&list.level);
         transfer::transfer(list, tx_context::sender(ctx));
     }
 

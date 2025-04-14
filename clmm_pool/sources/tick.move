@@ -23,6 +23,13 @@
 /// * Tick boundary crossing events
 /// * Tick initialization events
 module clmm_pool::tick {
+    /// Error codes for the tick module
+    const ELiquidityOverflow: u64 = 0;
+    const EInsufficientLiquidity: u64 = 1;
+    const EInvalidTickBound: u64 = 2;
+    const ETickNotFound: u64 = 3;
+    const EInsufficientStakedLiquidity: u64 = 9223372401926995967;
+
     /// Manager for tick operations in the pool.
     /// Handles tick spacing and maintains a skip list of all ticks.
     /// 
@@ -169,15 +176,15 @@ module clmm_pool::tick {
         };
         let (new_liquidity, new_staked_liquidity) = if (!integer_mate::i128::is_neg(liquidity_delta)) {
             let liquidity_abs = integer_mate::i128::abs_u128(liquidity_delta);
-            assert!(integer_mate::math_u128::add_check(liquidity_abs, current_liquidity), 1);
+            assert!(integer_mate::math_u128::add_check(liquidity_abs, current_liquidity), EInsufficientLiquidity);
             let staked_abs = integer_mate::i128::abs_u128(staked_liquidity_delta);
-            assert!(integer_mate::math_u128::add_check(staked_abs, staked_liquidity), 1);
+            assert!(integer_mate::math_u128::add_check(staked_abs, staked_liquidity), EInsufficientLiquidity);
             (current_liquidity + liquidity_abs, staked_liquidity + staked_abs)
         } else {
             let liquidity_abs = integer_mate::i128::abs_u128(liquidity_delta);
-            assert!(current_liquidity >= liquidity_abs, 1);
+            assert!(current_liquidity >= liquidity_abs, EInsufficientLiquidity);
             let staked_abs = integer_mate::i128::abs_u128(staked_liquidity_delta);
-            assert!(staked_liquidity >= staked_abs, 9223372401926995967);
+            assert!(staked_liquidity >= staked_abs, EInsufficientStakedLiquidity);
             (current_liquidity - liquidity_abs, staked_liquidity - staked_abs)
         };
         tick.fee_growth_outside_a = integer_mate::math_u128::wrapping_sub(fee_growth_global_a, tick.fee_growth_outside_a);
@@ -217,11 +224,11 @@ module clmm_pool::tick {
     /// * `fullsail_growth_global` - Global FULLSAIL distribution growth
     /// 
     /// # Abort Conditions
-    /// * If lower tick does not exist (error code: 3)
-    /// * If upper tick does not exist (error code: 3)
-    /// * If liquidity would become negative (error code: 1)
-    /// * If tick's gross liquidity would become negative (error code: 0)
-    /// * If liquidity net calculation would overflow (error code: 0)
+    /// * If lower tick does not exist (error code: ETickNotFound)
+    /// * If upper tick does not exist (error code: ETickNotFound)
+    /// * If liquidity would become negative (error code: EInsufficientLiquidity)
+    /// * If tick's gross liquidity would become negative (error code: ELiquidityOverflow)
+    /// * If liquidity net calculation would overflow (error code: ELiquidityOverflow)
     public(package) fun decrease_liquidity(
         tick_manager: &mut TickManager,
         current_tick_index: integer_mate::i32::I32,
@@ -239,8 +246,8 @@ module clmm_pool::tick {
         };
         let lower_score = tick_score(tick_lower);
         let upper_score = tick_score(tick_upper);
-        assert!(move_stl::skip_list::contains<Tick>(&tick_manager.ticks, lower_score), 3);
-        assert!(move_stl::skip_list::contains<Tick>(&tick_manager.ticks, upper_score), 3);
+        assert!(move_stl::skip_list::contains<Tick>(&tick_manager.ticks, lower_score), ETickNotFound);
+        assert!(move_stl::skip_list::contains<Tick>(&tick_manager.ticks, upper_score), ETickNotFound);
         if (update_by_liquidity(
             move_stl::skip_list::borrow_mut<Tick>(&mut tick_manager.ticks, lower_score),
             current_tick_index,
@@ -342,7 +349,7 @@ module clmm_pool::tick {
     /// 
     /// # Arguments
     /// * `tick_manager` - Reference to the tick manager
-    /// * `tick_indices` - Vector of tick indices to start from (if empty, starts from first tick)
+    /// * `tick_indexes` - Vector of tick indexes to start from (if empty, starts from first tick)
     /// * `limit` - Maximum number of ticks to return
     /// 
     /// # Returns
@@ -350,14 +357,14 @@ module clmm_pool::tick {
     /// 
     /// # Abort Conditions
     /// * If tick index is out of bounds (error code: 2)
-    public fun fetch_ticks(tick_manager: &TickManager, tick_indices: vector<u32>, limit: u64): vector<Tick> {
+    public fun fetch_ticks(tick_manager: &TickManager, tick_indexes: vector<u32>, limit: u64): vector<Tick> {
         let mut result = std::vector::empty<Tick>();
-        let next_score = if (std::vector::is_empty<u32>(&tick_indices)) {
+        let next_score = if (std::vector::is_empty<u32>(&tick_indexes)) {
             move_stl::skip_list::head<Tick>(&tick_manager.ticks)
         } else {
             move_stl::skip_list::find_next<Tick>(
                 &tick_manager.ticks,
-                tick_score(integer_mate::i32::from_u32(*std::vector::borrow<u32>(&tick_indices, 0))),
+                tick_score(integer_mate::i32::from_u32(*std::vector::borrow<u32>(&tick_indexes, 0))),
                 false
             )
         };
@@ -849,12 +856,12 @@ module clmm_pool::tick {
     /// The score as a u64 value
     /// 
     /// # Abort Conditions
-    /// * If the adjusted tick index is out of bounds (error code: 2)
+    /// * If the adjusted tick index is out of bounds (error code: EInvalidTickBound)
     fun tick_score(tick_index: integer_mate::i32::I32): u64 {
         let bound_adjusted_tick = integer_mate::i32::as_u32(
             integer_mate::i32::add(tick_index, integer_mate::i32::from(clmm_pool::tick_math::tick_bound()))
         );
-        assert!(bound_adjusted_tick >= 0 && bound_adjusted_tick <= clmm_pool::tick_math::tick_bound() * 2, 2);
+        assert!(bound_adjusted_tick >= 0 && bound_adjusted_tick <= clmm_pool::tick_math::tick_bound() * 2, EInvalidTickBound);
         bound_adjusted_tick as u64
     }
 
@@ -904,8 +911,8 @@ module clmm_pool::tick {
     /// Updated gross liquidity value
     /// 
     /// # Abort Conditions
-    /// * If adding liquidity would cause overflow (error code: 0)
-    /// * If removing more liquidity than available (error code: 1)
+    /// * If adding liquidity would cause overflow (error code: ELiquidityOverflow)
+    /// * If removing more liquidity than available (error code: EInsufficientLiquidity)
     fun update_by_liquidity(
         tick: &mut Tick,
         current_tick_index: integer_mate::i32::I32,
@@ -920,10 +927,10 @@ module clmm_pool::tick {
         fullsail_distribution_growth_global: u128
     ): u128 {
         let updated_liquidity_gross = if (is_add) {
-            assert!(integer_mate::math_u128::add_check(tick.liquidity_gross, liquidity), 0);
+            assert!(integer_mate::math_u128::add_check(tick.liquidity_gross, liquidity), ELiquidityOverflow);
             tick.liquidity_gross + liquidity
         } else {
-            assert!(tick.liquidity_gross >= liquidity, 1);
+            assert!(tick.liquidity_gross >= liquidity, EInsufficientLiquidity);
             tick.liquidity_gross - liquidity
         };
         if (updated_liquidity_gross == 0) {
@@ -971,7 +978,7 @@ module clmm_pool::tick {
             (delta_value_sub, overflow_flag_sub)
         };
         if (overflow_detected) {
-            abort 0
+            abort ELiquidityOverflow
         };
         tick.liquidity_gross = updated_liquidity_gross;
         tick.liquidity_net = liquidity_delta_result;

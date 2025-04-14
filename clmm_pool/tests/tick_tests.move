@@ -751,13 +751,14 @@ module clmm_pool::tick_tests {
                 false // is_prev
             );
 
-            // TODO
             // Check that the next tick exists and it is tick_upper_plus
             // assert!(move_stl::option_u64::is_some(&next_score), 29);
+            // let next_tick = tick::borrow_tick(tick_manager, tick_upper_plus);
+            // assert!(tick::liquidity_gross(next_tick) == liquidity, 30);
 
-            // Check values of the upper tick
-            // assert!(tick::liquidity_gross(upper_tick) == liquidity * 2, 30);
-            // assert!(tick::liquidity_net(upper_tick) == integer_mate::i128::neg_from(liquidity), 31);
+            // // Check values of the upper tick
+            // assert!(tick::liquidity_gross(upper_tick) == liquidity * 2, 31);
+            // assert!(tick::liquidity_net(upper_tick) == integer_mate::i128::neg_from(liquidity), 32);
 
             transfer::public_transfer(helper, @0x1);
         };

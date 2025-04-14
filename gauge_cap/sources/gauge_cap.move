@@ -12,37 +12,40 @@ module gauge_cap::gauge_cap {
     }
 
     public fun create_gauge_cap(
-        _arg0: &CreateCap,
-        arg1: sui::object::ID,
-        arg2: sui::object::ID,
-        arg3: &mut sui::tx_context::TxContext
+        create_cap: &CreateCap,
+        gauge_id: sui::object::ID,
+        pool_id: sui::object::ID,
+        tx_context: &mut sui::tx_context::TxContext
     ): GaugeCap {
         GaugeCap {
-            id: sui::object::new(arg3),
-            gauge_id: arg2,
-            pool_id: arg1,
+            id: sui::object::new(tx_context),
+            gauge_id: gauge_id,
+            pool_id: pool_id,
         }
     }
-
-    public fun get_gauge_id(arg0: &GaugeCap): sui::object::ID {
-        arg0.gauge_id
+    public fun get_gauge_id(gauge_cap: &GaugeCap): sui::object::ID {
+        gauge_cap.gauge_id
     }
 
-    public fun get_pool_id(arg0: &GaugeCap): sui::object::ID {
-        arg0.pool_id
+    public fun get_pool_id(gauge_cap: &GaugeCap): sui::object::ID {
+        gauge_cap.pool_id
     }
 
-    public fun grant_create_cap(_arg0: &sui::package::Publisher, arg1: address, arg2: &mut sui::tx_context::TxContext) {
-        let v0 = CreateCap { id: sui::object::new(arg2) };
-        sui::transfer::public_transfer<CreateCap>(v0, arg1);
+    public fun grant_create_cap(publisher: &sui::package::Publisher, recipient: address, ctx: &mut sui::tx_context::TxContext) {
+        let new_cap = CreateCap { id: sui::object::new(ctx) };
+        sui::transfer::public_transfer<CreateCap>(new_cap, recipient);
     }
 
-    fun init(arg0: GAUGE_CAP, arg1: &mut sui::tx_context::TxContext) {
-        sui::package::claim_and_keep<GAUGE_CAP>(arg0, arg1);
-        let v0 = CreateCap { id: sui::object::new(arg1) };
-        sui::transfer::public_transfer<CreateCap>(v0, sui::tx_context::sender(arg1));
+    fun init(gauge_cap_instance: GAUGE_CAP, ctx: &mut sui::tx_context::TxContext) {
+        sui::package::claim_and_keep<GAUGE_CAP>(gauge_cap_instance, ctx);
+        let new_cap = CreateCap { id: sui::object::new(ctx) };
+        sui::transfer::public_transfer<CreateCap>(new_cap, sui::tx_context::sender(ctx));
     }
 
-    // decompiled from Move bytecode v6
+    #[test_only]
+    public fun init_test(ctx: &mut sui::tx_context::TxContext) {
+        let new_cap = CreateCap { id: sui::object::new(ctx) };
+        sui::transfer::public_transfer<CreateCap>(new_cap, sui::tx_context::sender(ctx));
+    }
 }
 

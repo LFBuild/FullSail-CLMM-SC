@@ -18,6 +18,39 @@
 /// infrastructure for fee collection and reward distribution to liquidity providers.
 
 module clmm_pool::pool {
+
+    const Q64: u128 = 18446744073709551616;
+
+    // Error codes for the pool module
+    const EZeroAmount: u64 = 0;
+    const EInsufficientLiquidity: u64 = 1;
+    const EZeroLiquidity: u64 = 3;
+    const EInsufficientAmount: u64 = 5;
+    const EAmountInOverflow: u64 = 6;
+    const EAmountOutOverflow: u64 = 7;
+    const EFeeAmountOverflow: u64 = 8;
+    const EInvalidFeeRate: u64 = 9;
+    const EInvalidPriceLimit: u64 = 11;
+    const EPoolIdMismatch: u64 = 12;
+    const EPoolPaused: u64 = 13;
+    const EInvalidPoolOrPartnerId: u64 = 14;
+    const EPartnerIdMismatch: u64 = 15;
+    const EInvalidRefFeeRate: u64 = 16;
+    const ERewarderIndexNotFound: u64 = 17;
+    const EZeroOutputAmount: u64 = 18;
+    const EInvalidTick: u64 = 19;
+    const ENextTickNotFound: u64 = 20;
+    const EInvalidRefFeeAmount: u64 = 21;
+    const EPositionPoolIdMismatch: u64 = 9223373806381301759;
+    const EInvalidTickRange: u64 = 9223378947457155071;
+    const ELiquidityAdditionOverflow: u64 = 9223379033357877270;
+    const EZeroUnstakeLiquidity: u64 = 9223379200860225535;
+    const EGaugerIdNotFound: u64 = 9223379295349506047;
+    const EInvalidGaugeCap: u64 = 9223379355479048191;
+    const EPoolNotPaused: u64 = 9223378204427812863;
+    const EPoolAlreadyPaused: u64 = 9223376739843964927;
+    const EInsufficientStakedLiquidity: u64 = 9223379024766566399;
+
     public struct POOL has drop {}
 
     /// The main pool structure that represents a liquidity pool for a specific token pair.
@@ -581,14 +614,14 @@ module clmm_pool::pool {
     /// * `position` - The position to close
     ///
     /// # Aborts
-    /// If the pool is paused
+    /// If the pool is paused (error code: EPoolPaused)
     public fun close_position<CoinTypeA, CoinTypeB>(
         config: &clmm_pool::config::GlobalConfig,
         pool: &mut Pool<CoinTypeA, CoinTypeB>,
         position: clmm_pool::position::Position
     ) {
         clmm_pool::config::checked_package_version(config);
-        assert!(!pool.is_pause, 13);
+        assert!(!pool.is_pause, EPoolPaused);
         let position_id = sui::object::id<clmm_pool::position::Position>(&position);
         clmm_pool::position::close_position(&mut pool.position_manager, position);
         let event = ClosePositionEvent {
@@ -652,13 +685,13 @@ module clmm_pool::pool {
     /// * `position_id` - The ID of the position to mark as staked
     ///
     /// # Aborts
-    /// If the pool is paused
+    /// If the pool is paused (error code: EPoolPaused)
     public fun mark_position_staked<CoinTypeA, CoinTypeB>(
         pool: &mut Pool<CoinTypeA, CoinTypeB>,
         gauge_cap: &gauge_cap::gauge_cap::GaugeCap,
         position_id: sui::object::ID
     ) {
-        assert!(!pool.is_pause, 13);
+        assert!(!pool.is_pause, EPoolPaused);
         check_gauge_cap<CoinTypeA, CoinTypeB>(pool, gauge_cap);
         clmm_pool::position::mark_position_staked(&mut pool.position_manager, position_id, true);
     }
@@ -686,7 +719,7 @@ module clmm_pool::pool {
         ctx: &mut sui::tx_context::TxContext
     ): clmm_pool::position::Position {
         clmm_pool::config::checked_package_version(global_config);
-        assert!(!pool.is_pause, 13);
+        assert!(!pool.is_pause, EPoolPaused);
         let tick_lower_i32 = integer_mate::i32::from_u32(tick_lower);
         let tick_upper_i32 = integer_mate::i32::from_u32(tick_upper);
         let pool_id = sui::object::id<Pool<CoinTypeA, CoinTypeB>>(pool);
@@ -732,7 +765,7 @@ module clmm_pool::pool {
         ctx: &mut sui::tx_context::TxContext
     ) {
         clmm_pool::config::checked_package_version(global_config);
-        assert!(!pool.is_pause, 13);
+        assert!(!pool.is_pause, EPoolPaused);
         clmm_pool::config::check_rewarder_manager_role(global_config, sui::tx_context::sender(ctx));
         clmm_pool::rewarder::update_emission<RewardCoinType>(
             rewarder_global_vault,
@@ -818,7 +851,7 @@ module clmm_pool::pool {
         clock: &sui::clock::Clock
     ): AddLiquidityReceipt<CoinTypeA, CoinTypeB> {
         clmm_pool::config::checked_package_version(global_config);
-        assert!(delta_liquidity != 0, 3);
+        assert!(delta_liquidity != 0, EZeroLiquidity);
         add_liquidity_internal<CoinTypeA, CoinTypeB>(
             pool,
             position,
@@ -857,7 +890,7 @@ module clmm_pool::pool {
         clock: &sui::clock::Clock
     ): AddLiquidityReceipt<CoinTypeA, CoinTypeB> {
         clmm_pool::config::checked_package_version(global_config);
-        assert!(amount_in > 0, 0);
+        assert!(amount_in > 0, EZeroAmount);
         add_liquidity_internal<CoinTypeA, CoinTypeB>(
             pool,
             position,
@@ -897,7 +930,7 @@ module clmm_pool::pool {
         is_fix_amount_a: bool,
         timestamp: u64
     ): AddLiquidityReceipt<CoinTypeA, CoinTypeB> {
-        assert!(!pool.is_pause, 13);
+        assert!(!pool.is_pause, EPoolPaused);
         validate_pool_position<CoinTypeA, CoinTypeB>(pool, position);
         clmm_pool::rewarder::settle(&mut pool.rewarder_manager, pool.liquidity, timestamp);
 
@@ -942,7 +975,7 @@ module clmm_pool::pool {
         );
         if (integer_mate::i32::gte(pool.current_tick_index, tick_lower) && 
             integer_mate::i32::lt(pool.current_tick_index, tick_upper)) {
-            assert!(integer_mate::math_u128::add_check(pool.liquidity, liquidity), 1);
+            assert!(integer_mate::math_u128::add_check(pool.liquidity, liquidity), EInsufficientLiquidity);
             pool.liquidity = pool.liquidity + liquidity;
         };
 
@@ -1002,7 +1035,7 @@ module clmm_pool::pool {
     /// * `staked_fee` - The fee amount for staked liquidity
     /// * `updated_total` - The total amount after fee distribution
     fun apply_unstaked_fees(fee_amount: u128, total_amount: u128, unstaked_fee_rate: u64): (u128, u128) {
-        let unstaked_fee = integer_mate::full_math_u128::mul_div_ceil(fee_amount, unstaked_fee_rate as u128, 10000);
+        let unstaked_fee = integer_mate::full_math_u128::mul_div_ceil(fee_amount, unstaked_fee_rate as u128, clmm_pool::config::unstaked_liquidity_fee_rate_denom() as u128);
         (fee_amount - unstaked_fee, total_amount + unstaked_fee)
     }
 
@@ -1041,7 +1074,7 @@ module clmm_pool::pool {
         position_id: sui::object::ID
     ): (u64, u64) {
         clmm_pool::config::checked_package_version(global_config);
-        assert!(!pool.is_pause, 13);
+        assert!(!pool.is_pause, EPoolPaused);
         let position_info = clmm_pool::position::borrow_position_info(&pool.position_manager, position_id);
         if (clmm_pool::position::info_liquidity(position_info) != 0) {
             let (tick_lower, tick_upper) = clmm_pool::position::info_tick_range(position_info);
@@ -1074,7 +1107,7 @@ module clmm_pool::pool {
         position_id: sui::object::ID
     ): u64 {
         clmm_pool::config::checked_package_version(global_config);
-        assert!(!pool.is_pause, 13);
+        assert!(!pool.is_pause, EPoolPaused);
         let position_info = clmm_pool::position::borrow_position_info(&pool.position_manager, position_id);
         if (clmm_pool::position::info_liquidity(position_info) != 0) {
             let (tick_lower, tick_upper) = clmm_pool::position::info_tick_range(position_info);
@@ -1116,7 +1149,7 @@ module clmm_pool::pool {
         clock: &sui::clock::Clock
     ): u128 {
         clmm_pool::config::checked_package_version(global_config);
-        assert!(!pool.is_pause, 13);
+        assert!(!pool.is_pause, EPoolPaused);
         clmm_pool::rewarder::settle(&mut pool.rewarder_manager, pool.liquidity, sui::clock::timestamp_ms(clock) / 1000);
         let position_info = clmm_pool::position::borrow_position_info(&pool.position_manager, position_id);
         if (clmm_pool::position::info_liquidity(position_info) != 0) {
@@ -1154,7 +1187,7 @@ module clmm_pool::pool {
         clock: &sui::clock::Clock
     ): u64 {
         let mut rewarder_idx = clmm_pool::rewarder::rewarder_index<RewardCoinType>(&pool.rewarder_manager);
-        assert!(std::option::is_some<u64>(&rewarder_idx), 17);
+        assert!(std::option::is_some<u64>(&rewarder_idx), ERewarderIndexNotFound);
         let rewards = calculate_and_update_rewards<CoinTypeA, CoinTypeB>(global_config, pool, position_id, clock);
         *std::vector::borrow<u64>(&rewards, std::option::extract<u64>(&mut rewarder_idx))
     }
@@ -1181,7 +1214,7 @@ module clmm_pool::pool {
         clock: &sui::clock::Clock
     ): vector<u64> {
         clmm_pool::config::checked_package_version(global_config);
-        assert!(!pool.is_pause, 13);
+        assert!(!pool.is_pause, EPoolPaused);
         clmm_pool::rewarder::settle(&mut pool.rewarder_manager, pool.liquidity, sui::clock::timestamp_ms(clock) / 1000);
         let position_info = clmm_pool::position::borrow_position_info(&pool.position_manager, position_id);
         if (clmm_pool::position::info_liquidity(position_info) != 0) {
@@ -1220,10 +1253,10 @@ module clmm_pool::pool {
         } else {
             let (staked_fee, unstaked_fee) = if (staked_liquidity == 0) {
                 let (unstaked_amount, unstaked_fee_amount) = apply_unstaked_fees(fee_amount as u128, 0, unstaked_fee_rate);
-                (integer_mate::full_math_u128::mul_div_floor(unstaked_amount, 18446744073709551616, total_liquidity), unstaked_fee_amount as u64)
+                (integer_mate::full_math_u128::mul_div_floor(unstaked_amount, Q64, total_liquidity), unstaked_fee_amount as u64)
             } else {
                 let (staked_amount, unstaked_fee_amount) = split_fees(fee_amount, total_liquidity, staked_liquidity, unstaked_fee_rate);
-                (integer_mate::full_math_u128::mul_div_floor(staked_amount as u128, 18446744073709551616, total_liquidity - staked_liquidity), unstaked_fee_amount)
+                (integer_mate::full_math_u128::mul_div_floor(staked_amount as u128, Q64, total_liquidity - staked_liquidity), unstaked_fee_amount)
             };
             (staked_fee, unstaked_fee)
         }
@@ -1354,18 +1387,18 @@ module clmm_pool::pool {
                 let liquidity_abs = integer_mate::i128::abs_u128(liquidity_delta);
                 let staked_liquidity_abs = integer_mate::i128::abs_u128(staked_liquidity_delta);
                 if (!integer_mate::i128::is_neg(liquidity_delta)) {
-                    assert!(integer_mate::math_u128::add_check(current_liquidity, liquidity_abs), 1);
+                    assert!(integer_mate::math_u128::add_check(current_liquidity, liquidity_abs), EInsufficientLiquidity);
                     current_liquidity = current_liquidity + liquidity_abs;
                 } else {
-                    assert!(current_liquidity >= liquidity_abs, 1);
+                    assert!(current_liquidity >= liquidity_abs, EInsufficientLiquidity);
                     current_liquidity = current_liquidity - liquidity_abs;
                 };
                 if (!integer_mate::i128::is_neg(staked_liquidity_delta)) {
-                    assert!(integer_mate::math_u128::add_check(staked_liquidity, staked_liquidity_abs), 1);
+                    assert!(integer_mate::math_u128::add_check(staked_liquidity, staked_liquidity_abs), EInsufficientStakedLiquidity);
                     staked_liquidity = staked_liquidity + staked_liquidity_abs;
                     continue
                 };
-                assert!(staked_liquidity >= staked_liquidity_abs, 1);
+                assert!(staked_liquidity >= staked_liquidity_abs, EInsufficientStakedLiquidity);
                 staked_liquidity = staked_liquidity - staked_liquidity_abs;
                 continue
             };
@@ -1528,18 +1561,18 @@ module clmm_pool::pool {
                 let liquidity_abs = integer_mate::i128::abs_u128(liquidity_delta);
                 let staked_liquidity_abs = integer_mate::i128::abs_u128(staked_liquidity_delta);
                 if (!integer_mate::i128::is_neg(liquidity_delta)) {
-                    assert!(integer_mate::math_u128::add_check(current_liquidity, liquidity_abs), 1);
+                    assert!(integer_mate::math_u128::add_check(current_liquidity, liquidity_abs), EInsufficientLiquidity);
                     current_liquidity = current_liquidity + liquidity_abs;
                 } else {
-                    assert!(current_liquidity >= liquidity_abs, 1);
+                    assert!(current_liquidity >= liquidity_abs, EInsufficientLiquidity);
                     current_liquidity = current_liquidity - liquidity_abs;
                 };
                 if (!integer_mate::i128::is_neg(staked_liquidity_delta)) {
-                    assert!(integer_mate::math_u128::add_check(staked_liquidity, staked_liquidity_abs), 1);
+                    assert!(integer_mate::math_u128::add_check(staked_liquidity, staked_liquidity_abs), EInsufficientStakedLiquidity);
                     staked_liquidity = staked_liquidity + staked_liquidity_abs;
                     continue
                 };
-                assert!(staked_liquidity >= staked_liquidity_abs, 1);
+                assert!(staked_liquidity >= staked_liquidity_abs, EInsufficientStakedLiquidity);
                 staked_liquidity = staked_liquidity - staked_liquidity_abs;
                 continue
             };
@@ -1652,7 +1685,7 @@ module clmm_pool::pool {
     /// * `gauge_cap` - Reference to the gauge cap to validate
     ///
     /// # Aborts
-    /// * If the gauge cap is not valid for the pool (error code: 9223379355479048191)
+    /// * If the gauge cap is not valid for the pool (error code: EInvalidGaugeCap)
     fun check_gauge_cap<CoinTypeA, CoinTypeB>(
         pool: &Pool<CoinTypeA, CoinTypeB>, 
         gauge_cap: &gauge_cap::gauge_cap::GaugeCap
@@ -1669,7 +1702,7 @@ module clmm_pool::pool {
         } else {
             false
         };
-        assert!(is_valid, 9223379355479048191);
+        assert!(is_valid, EInvalidGaugeCap);
     }
 
     /// Safely subtracts a value from an amount, ensuring the result is non-negative.
@@ -1684,9 +1717,9 @@ module clmm_pool::pool {
     /// The result of the subtraction
     ///
     /// # Aborts
-    /// * If sub_amount is greater than amount (error code: 5)
+    /// * If sub_amount is greater than amount (error code: EInsufficientAmount)
     fun check_remainer_amount_sub(amount: u64, sub_amount: u64): u64 {
-        assert!(amount >= sub_amount, 5);
+        assert!(amount >= sub_amount, EInsufficientAmount);
         amount - sub_amount
     }
 
@@ -1738,7 +1771,7 @@ module clmm_pool::pool {
     /// * Balance of CoinTypeB collected as fees
     ///
     /// # Aborts
-    /// * If the pool is paused (error code: 13)
+    /// * If the pool is paused (error code: EPoolPaused)
     /// * If the package version is invalid
     /// * If the position is staked (returns zero balances)
     public fun collect_fee<CoinTypeA, CoinTypeB>(
@@ -1748,7 +1781,7 @@ module clmm_pool::pool {
         update_fee: bool
     ): (sui::balance::Balance<CoinTypeA>, sui::balance::Balance<CoinTypeB>) {
         clmm_pool::config::checked_package_version(global_config);
-        assert!(!pool.is_pause, 13);
+        assert!(!pool.is_pause, EPoolPaused);
         let position_id = sui::object::id<clmm_pool::position::Position>(position);
         if (clmm_pool::position::is_staked(borrow_position_info<CoinTypeA, CoinTypeB>(pool, position_id))) {
             return (sui::balance::zero<CoinTypeA>(), sui::balance::zero<CoinTypeB>())
@@ -1789,13 +1822,13 @@ module clmm_pool::pool {
     /// * Balance of CoinTypeB collected as gauge fees
     ///
     /// # Aborts
-    /// * If the pool is paused (error code: 13)
+    /// * If the pool is paused (error code: EPoolPaused)
     /// * If the gauge cap is invalid for the pool
     public fun collect_fullsail_distribution_gauger_fees<CoinTypeA, CoinTypeB>(
         pool: &mut Pool<CoinTypeA, CoinTypeB>,
         gauge_cap: &gauge_cap::gauge_cap::GaugeCap
     ): (sui::balance::Balance<CoinTypeA>, sui::balance::Balance<CoinTypeB>) {
-        assert!(!pool.is_pause, 13);
+        assert!(!pool.is_pause, EPoolPaused);
         check_gauge_cap<CoinTypeA, CoinTypeB>(pool, gauge_cap);
         let mut balance_a = sui::balance::zero<CoinTypeA>();
         let mut balance_b = sui::balance::zero<CoinTypeB>();
@@ -1844,7 +1877,7 @@ module clmm_pool::pool {
     /// * Balance of CoinTypeB collected as protocol fees
     ///
     /// # Aborts
-    /// * If the pool is paused (error code: 13)
+    /// * If the pool is paused (error code: EPoolPaused)
     /// * If the package version is invalid
     /// * If the caller does not have protocol fee claim role
     public fun collect_protocol_fee<CoinTypeA, CoinTypeB>(
@@ -1853,7 +1886,7 @@ module clmm_pool::pool {
         ctx: &mut sui::tx_context::TxContext
     ): (sui::balance::Balance<CoinTypeA>, sui::balance::Balance<CoinTypeB>) {
         clmm_pool::config::checked_package_version(global_config);
-        assert!(!pool.is_pause, 13);
+        assert!(!pool.is_pause, EPoolPaused);
         clmm_pool::config::check_protocol_fee_claim_role(global_config, sui::tx_context::sender(ctx));
         
         let fee_amount_a = pool.fee_protocol_coin_a;
@@ -1892,9 +1925,9 @@ module clmm_pool::pool {
     /// Balance of RewardCoinType collected as rewards
     ///
     /// # Aborts
-    /// * If the pool is paused (error code: 13)
+    /// * If the pool is paused (error code: EPoolPaused)
     /// * If the package version is invalid
-    /// * If the rewarder index is not found (error code: 17)
+    /// * If the rewarder index is not found (error code: ERewarderIndexNotFound)
     public fun collect_reward<CoinTypeA, CoinTypeB, RewardCoinType>(
         global_config: &clmm_pool::config::GlobalConfig,
         pool: &mut Pool<CoinTypeA, CoinTypeB>,
@@ -1904,11 +1937,11 @@ module clmm_pool::pool {
         clock: &sui::clock::Clock
     ): sui::balance::Balance<RewardCoinType> {
         clmm_pool::config::checked_package_version(global_config);
-        assert!(!pool.is_pause, 13);
+        assert!(!pool.is_pause, EPoolPaused);
         clmm_pool::rewarder::settle(&mut pool.rewarder_manager, pool.liquidity, sui::clock::timestamp_ms(clock) / 1000);
         let position_id = sui::object::id<clmm_pool::position::Position>(position);
         let mut rewarder_idx = clmm_pool::rewarder::rewarder_index<RewardCoinType>(&pool.rewarder_manager);
-        assert!(std::option::is_some<u64>(&rewarder_idx), 17);
+        assert!(std::option::is_some<u64>(&rewarder_idx), ERewarderIndexNotFound);
         let rewarder_index = std::option::extract<u64>(&mut rewarder_idx);
         let reward_amount = if (update_rewards && clmm_pool::position::liquidity(position) != 0 || clmm_pool::position::inited_rewards_count(
             &pool.position_manager,
@@ -2036,11 +2069,11 @@ module clmm_pool::pool {
     /// * FlashSwapReceipt containing swap details and fees
     ///
     /// # Aborts
-    /// * If the pool is paused (error code: 13)
+    /// * If the pool is paused (error code: EPoolPaused)
     /// * If the package version is invalid
-    /// * If the amount is zero (error code: 0)
-    /// * If the price limit is invalid (error code: 11)
-    /// * If no output amount is received (error code: 18)
+    /// * If the amount is zero (error code: EZeroAmount)
+    /// * If the price limit is invalid (error code: EInvalidPriceLimit)
+    /// * If no output amount is received (error code: EZeroOutputAmount)
     public fun flash_swap<CoinTypeA, CoinTypeB>(
         global_config: &clmm_pool::config::GlobalConfig,
         pool: &mut Pool<CoinTypeA, CoinTypeB>,
@@ -2053,7 +2086,7 @@ module clmm_pool::pool {
         clock: &sui::clock::Clock
     ): (sui::balance::Balance<CoinTypeA>, sui::balance::Balance<CoinTypeB>, FlashSwapReceipt<CoinTypeA, CoinTypeB>) {
         clmm_pool::config::checked_package_version(global_config);
-        assert!(!pool.is_pause, 13);
+        assert!(!pool.is_pause, EPoolPaused);
         flash_swap_internal<CoinTypeA, CoinTypeB>(
             pool,
             global_config,
@@ -2097,9 +2130,9 @@ module clmm_pool::pool {
     /// * FlashSwapReceipt containing swap details and fees
     ///
     /// # Aborts
-    /// * If the amount is zero (error code: 0)
-    /// * If the price limit is invalid (error code: 11)
-    /// * If no output amount is received (error code: 18)
+    /// * If the amount is zero (error code: EZeroAmount)
+    /// * If the price limit is invalid (error code: EInvalidPriceLimit)
+    /// * If no output amount is received (error code: EZeroOutputAmount)
     fun flash_swap_internal<CoinTypeA, CoinTypeB>(
         pool: &mut Pool<CoinTypeA, CoinTypeB>,
         global_config: &clmm_pool::config::GlobalConfig,
@@ -2113,13 +2146,14 @@ module clmm_pool::pool {
         price_provider: &price_provider::price_provider::PriceProvider,
         clock: &sui::clock::Clock
     ): (sui::balance::Balance<CoinTypeA>, sui::balance::Balance<CoinTypeB>, FlashSwapReceipt<CoinTypeA, CoinTypeB>) {
-        assert!(amount > 0, 0);
+        assert!(amount > 0, EZeroAmount);
         clmm_pool::rewarder::settle(&mut pool.rewarder_manager, pool.liquidity, sui::clock::timestamp_ms(clock) / 1000);
         if (a2b) {
-            assert!(pool.current_sqrt_price > sqrt_price_limit && sqrt_price_limit >= clmm_pool::tick_math::min_sqrt_price(), 11);
+            assert!(pool.current_sqrt_price > sqrt_price_limit && sqrt_price_limit >= clmm_pool::tick_math::min_sqrt_price(), EInvalidPriceLimit);
         } else {
-            assert!(pool.current_sqrt_price < sqrt_price_limit && sqrt_price_limit <= clmm_pool::tick_math::max_sqrt_price(), 11);
+            assert!(pool.current_sqrt_price < sqrt_price_limit && sqrt_price_limit <= clmm_pool::tick_math::max_sqrt_price(), EInvalidPriceLimit);
         };
+        let before_sqrt_price = pool.current_sqrt_price;
         let unstaked_fee_rate = pool.unstaked_liquidity_fee_rate;
         let final_unstaked_fee_rate = if (unstaked_fee_rate == clmm_pool::config::default_unstaked_fee_rate()) {
             clmm_pool::config::unstaked_liquidity_fee_rate(global_config)
@@ -2137,7 +2171,7 @@ module clmm_pool::pool {
             ref_fee_rate,
             clock
         );
-        assert!(swap_result.amount_out > 0, 18);
+        assert!(swap_result.amount_out > 0, EZeroOutputAmount);
         let (balance_b, balance_a) = if (a2b) {
             (sui::balance::split<CoinTypeB>(&mut pool.coin_b, swap_result.amount_out), sui::balance::zero<CoinTypeA>())
         } else {
@@ -2167,7 +2201,7 @@ module clmm_pool::pool {
             fee_amount: swap_result.fee_amount,
             vault_a_amount: sui::balance::value<CoinTypeA>(&pool.coin_a),
             vault_b_amount: sui::balance::value<CoinTypeB>(&pool.coin_b),
-            before_sqrt_price: pool.current_sqrt_price,
+            before_sqrt_price: before_sqrt_price,
             after_sqrt_price: pool.current_sqrt_price,
             steps: swap_result.steps,
         };
@@ -2208,11 +2242,11 @@ module clmm_pool::pool {
     /// * FlashSwapReceipt containing swap details and fees
     ///
     /// # Aborts
-    /// * If the pool is paused (error code: 13)
+    /// * If the pool is paused (error code: EPoolPaused)
     /// * If the package version is invalid
-    /// * If the amount is zero (error code: 0)
-    /// * If the price limit is invalid (error code: 11)
-    /// * If no output amount is received (error code: 18)
+    /// * If the amount is zero (error code: EZeroAmount)
+    /// * If the price limit is invalid (error code: EInvalidPriceLimit)
+    /// * If no output amount is received (error code: EZeroOutputAmount)
     public fun flash_swap_with_partner<CoinTypeA, CoinTypeB>(
         global_config: &clmm_pool::config::GlobalConfig,
         pool: &mut Pool<CoinTypeA, CoinTypeB>,
@@ -2226,7 +2260,7 @@ module clmm_pool::pool {
         clock: &sui::clock::Clock
     ): (sui::balance::Balance<CoinTypeA>, sui::balance::Balance<CoinTypeB>, FlashSwapReceipt<CoinTypeA, CoinTypeB>) {
         clmm_pool::config::checked_package_version(global_config);
-        assert!(!pool.is_pause, 13);
+        assert!(!pool.is_pause, EPoolPaused);
         flash_swap_internal<CoinTypeA, CoinTypeB>(
             pool,
             global_config,
@@ -2341,7 +2375,7 @@ module clmm_pool::pool {
     /// * Amount of token B needed
     ///
     /// # Aborts
-    /// * If current_tick is not within the specified range (error code: 19)
+    /// * If current_tick is not within the specified range (error code: EInvalidTick)
     public fun get_liquidity_from_amount(
         tick_lower: integer_mate::i32::I32,
         tick_upper: integer_mate::i32::I32,
@@ -2359,7 +2393,7 @@ module clmm_pool::pool {
                     false
                 ), 0)
             } else {
-                assert!(integer_mate::i32::lt(current_tick, tick_upper), 19);
+                assert!(integer_mate::i32::lt(current_tick, tick_upper), EInvalidTick);
                 let liquidity_current = clmm_pool::clmm_math::get_liquidity_from_a(
                     current_sqrt_price,
                     clmm_pool::tick_math::get_sqrt_price_at_tick(tick_upper),
@@ -2383,7 +2417,7 @@ module clmm_pool::pool {
                     false
                 ), 0)
             } else {
-                assert!(integer_mate::i32::gte(current_tick, tick_lower), 19);
+                assert!(integer_mate::i32::gte(current_tick, tick_lower), EInvalidTick);
                 let liquidity_current = clmm_pool::clmm_math::get_liquidity_from_b(
                     clmm_pool::tick_math::get_sqrt_price_at_tick(tick_lower),
                     current_sqrt_price,
@@ -2411,9 +2445,9 @@ module clmm_pool::pool {
     /// The ID of the fullsail distribution gauger
     ///
     /// # Aborts
-    /// * If the gauger ID is not set (error code: 9223379295349506047)
+    /// * If the gauger ID is not set (error code: EGaugerIdNotFound)
     public fun get_fullsail_distribution_gauger_id<CoinTypeA, CoinTypeB>(pool: &Pool<CoinTypeA, CoinTypeB>): sui::object::ID {
-        assert!(std::option::is_some<sui::object::ID>(&pool.fullsail_distribution_gauger_id), 9223379295349506047);
+        assert!(std::option::is_some<sui::object::ID>(&pool.fullsail_distribution_gauger_id), EGaugerIdNotFound);
         *std::option::borrow<sui::object::ID>(&pool.fullsail_distribution_gauger_id)
     }
 
@@ -2442,14 +2476,14 @@ module clmm_pool::pool {
     /// The fullsail distribution growth within the specified range
     ///
     /// # Aborts
-    /// * If the tick range is invalid (error code: 9223378947457155071)
+    /// * If the tick range is invalid (error code: EInvalidTickRange)
     public fun get_fullsail_distribution_growth_inside<CoinTypeA, CoinTypeB>(
         pool: &Pool<CoinTypeA, CoinTypeB>,
         tick_lower: integer_mate::i32::I32,
         tick_upper: integer_mate::i32::I32,
         mut growth_global: u128
     ): u128 {
-        assert!(check_tick_range(tick_lower, tick_upper), 9223378947457155071);
+        assert!(check_tick_range(tick_lower, tick_upper), EInvalidTickRange);
         if (growth_global == 0) {
             growth_global = pool.fullsail_distribution_growth_global;
         };
@@ -2613,7 +2647,7 @@ module clmm_pool::pool {
         position_id: sui::object::ID
     ): u64 {
         let mut rewarder_idx = clmm_pool::rewarder::rewarder_index<RewardCoinType>(&pool.rewarder_manager);
-        assert!(std::option::is_some<u64>(&rewarder_idx), 17);
+        assert!(std::option::is_some<u64>(&rewarder_idx), ERewarderIndexNotFound);
         let rewards = clmm_pool::position::rewards_amount_owned(&pool.position_manager, position_id);
         *std::vector::borrow<u64>(&rewards, std::option::extract<u64>(&mut rewarder_idx))
     }
@@ -2678,14 +2712,14 @@ module clmm_pool::pool {
     /// * `gauge_cap` - Reference to the gauge capability
     ///
     /// # Aborts
-    /// * If the pool ID in the gauge capability does not match the pool's ID (error code: 9223379334004211711)
+    /// * If the pool ID in the gauge capability does not match the pool's ID (error code: EInvalidPoolOrPartnerId)
     public fun init_fullsail_distribution_gauge<CoinTypeA, CoinTypeB>(
         pool: &mut Pool<CoinTypeA, CoinTypeB>,
         gauge_cap: &gauge_cap::gauge_cap::GaugeCap
     ) {
         assert!(
             gauge_cap::gauge_cap::get_pool_id(gauge_cap) == sui::object::id<Pool<CoinTypeA, CoinTypeB>>(pool),
-            9223379334004211711
+            EInvalidPoolOrPartnerId
         );
         std::option::fill<sui::object::ID>(
             &mut pool.fullsail_distribution_gauger_id,
@@ -2702,14 +2736,14 @@ module clmm_pool::pool {
     /// * `ctx` - Reference to the transaction context
     ///
     /// # Aborts
-    /// * If the pool is paused (error code: 13)
+    /// * If the pool is paused (error code: EPoolPaused)
     public fun initialize_rewarder<CoinTypeA, CoinTypeB, RewardCoinType>(
         global_config: &clmm_pool::config::GlobalConfig,
         pool: &mut Pool<CoinTypeA, CoinTypeB>,
         ctx: &mut sui::tx_context::TxContext
     ) {
         clmm_pool::config::checked_package_version(global_config);
-        assert!(!pool.is_pause, 13);
+        assert!(!pool.is_pause, EPoolPaused);
         clmm_pool::config::check_rewarder_manager_role(global_config, sui::tx_context::sender(ctx));
         clmm_pool::rewarder::add_rewarder<RewardCoinType>(&mut pool.rewarder_manager);
         let event = AddRewarderEvent {
@@ -2752,13 +2786,13 @@ module clmm_pool::pool {
     /// * `position_id` - ID of the position to mark as unstaked
     ///
     /// # Aborts
-    /// * If the pool is paused (error code: 13)
+    /// * If the pool is paused (error code: EPoolPaused)
     public fun mark_position_unstaked<CoinTypeA, CoinTypeB>(
         pool: &mut Pool<CoinTypeA, CoinTypeB>,
         gauge_cap: &gauge_cap::gauge_cap::GaugeCap,
         position_id: sui::object::ID
     ) {
-        assert!(!pool.is_pause, 13);
+        assert!(!pool.is_pause, EPoolPaused);
         check_gauge_cap<CoinTypeA, CoinTypeB>(pool, gauge_cap);
         clmm_pool::position::mark_position_staked(&mut pool.position_manager, position_id, false);
     }
@@ -2772,7 +2806,7 @@ module clmm_pool::pool {
     /// * `ctx` - Reference to the transaction context
     ///
     /// # Aborts
-    /// * If the pool is already paused (error code: 9223376739843964927)
+    /// * If the pool is already paused (error code: EPoolAlreadyPaused)
     public fun pause<CoinTypeA, CoinTypeB>(
         global_config: &clmm_pool::config::GlobalConfig,
         pool: &mut Pool<CoinTypeA, CoinTypeB>,
@@ -2780,7 +2814,7 @@ module clmm_pool::pool {
     ) {
         clmm_pool::config::checked_package_version(global_config);
         clmm_pool::config::check_pool_manager_role(global_config, sui::tx_context::sender(ctx));
-        assert!(!pool.is_pause, 9223376739843964927);
+        assert!(!pool.is_pause, EPoolAlreadyPaused);
         pool.is_pause = true;
     }
 
@@ -2838,8 +2872,8 @@ module clmm_pool::pool {
     /// * Balance of token B to return
     ///
     /// # Aborts
-    /// * If the pool is paused (error code: 13)
-    /// * If the liquidity amount is zero or negative (error code: 3)
+    /// * If the pool is paused (error code: EPoolPaused)
+    /// * If the liquidity amount is zero or negative (error code: EZeroLiquidity)
     public fun remove_liquidity<CoinTypeA, CoinTypeB>(
         global_config: &clmm_pool::config::GlobalConfig,
         pool: &mut Pool<CoinTypeA, CoinTypeB>,
@@ -2848,8 +2882,8 @@ module clmm_pool::pool {
         clock: &sui::clock::Clock
     ): (sui::balance::Balance<CoinTypeA>, sui::balance::Balance<CoinTypeB>) {
         clmm_pool::config::checked_package_version(global_config);
-        assert!(!pool.is_pause, 13);
-        assert!(liquidity > 0, 3);
+        assert!(!pool.is_pause, EPoolPaused);
+        assert!(liquidity > 0, EZeroLiquidity);
         
         clmm_pool::rewarder::settle(
             &mut pool.rewarder_manager, 
@@ -2937,9 +2971,9 @@ module clmm_pool::pool {
     /// * `receipt` - Receipt containing the original liquidity addition details
     ///
     /// # Aborts
-    /// * If the balance of token A does not match the expected amount (error code: 0)
-    /// * If the balance of token B does not match the expected amount (error code: 0)
-    /// * If the pool ID in the receipt does not match the pool's ID (error code: 12)
+    /// * If the balance of token A does not match the expected amount (error code: EZeroAmount)
+    /// * If the balance of token B does not match the expected amount (error code: EZeroAmount)
+    /// * If the pool ID in the receipt does not match the pool's ID (error code: EPoolIdMismatch)
     public fun repay_add_liquidity<CoinTypeA, CoinTypeB>(
         global_config: &clmm_pool::config::GlobalConfig,
         pool: &mut Pool<CoinTypeA, CoinTypeB>,
@@ -2953,9 +2987,9 @@ module clmm_pool::pool {
             amount_a,
             amount_b,
         } = receipt;
-        assert!(sui::balance::value<CoinTypeA>(&balance_a) == amount_a, 0);
-        assert!(sui::balance::value<CoinTypeB>(&balance_b) == amount_b, 0);
-        assert!(sui::object::id<Pool<CoinTypeA, CoinTypeB>>(pool) == pool_id, 12);
+        assert!(sui::balance::value<CoinTypeA>(&balance_a) == amount_a, EZeroAmount);
+        assert!(sui::balance::value<CoinTypeB>(&balance_b) == amount_b, EZeroAmount);
+        assert!(sui::object::id<Pool<CoinTypeA, CoinTypeB>>(pool) == pool_id, EPoolIdMismatch);
         sui::balance::join<CoinTypeA>(&mut pool.coin_a, balance_a);
         sui::balance::join<CoinTypeB>(&mut pool.coin_b, balance_b);
     }
@@ -2971,11 +3005,11 @@ module clmm_pool::pool {
     /// * `receipt` - Receipt containing the flash swap operation details
     ///
     /// # Aborts
-    /// * If the pool is paused (error code: 13)
-    /// * If the pool ID in the receipt does not match the pool's ID (error code: 14)
-    /// * If the reference fee amount is non-zero (error code: 14)
-    /// * If the balance of token A does not match the expected amount (error code: 0)
-    /// * If the balance of token B does not match the expected amount (error code: 0)
+    /// * If the pool is paused (error code: EPoolPaused)
+    /// * If the pool ID in the receipt does not match the pool's ID (error code: EInvalidPoolOrPartnerId)
+    /// * If the reference fee amount is non-zero (error code: EInvalidPoolOrPartnerId)
+    /// * If the balance of token A does not match the expected amount (error code: EZeroAmount)
+    /// * If the balance of token B does not match the expected amount (error code: EZeroAmount)
     public fun repay_flash_swap<CoinTypeA, CoinTypeB>(
         global_config: &clmm_pool::config::GlobalConfig,
         pool: &mut Pool<CoinTypeA, CoinTypeB>,
@@ -2984,7 +3018,7 @@ module clmm_pool::pool {
         receipt: FlashSwapReceipt<CoinTypeA, CoinTypeB>
     ) {
         clmm_pool::config::checked_package_version(global_config);
-        assert!(!pool.is_pause, 13);
+        assert!(!pool.is_pause, EPoolPaused);
         let FlashSwapReceipt {
             pool_id,
             a2b,
@@ -2995,14 +3029,14 @@ module clmm_pool::pool {
             ref_fee_amount,
             gauge_fee_amount: _,
         } = receipt;
-        assert!(sui::object::id<Pool<CoinTypeA, CoinTypeB>>(pool) == pool_id, 14);
-        assert!(ref_fee_amount == 0, 14);
+        assert!(sui::object::id<Pool<CoinTypeA, CoinTypeB>>(pool) == pool_id, EInvalidPoolOrPartnerId);
+        assert!(ref_fee_amount == 0, EInvalidRefFeeAmount);
         if (a2b) {
-            assert!(sui::balance::value<CoinTypeA>(&balance_a) == pay_amount, 0);
+            assert!(sui::balance::value<CoinTypeA>(&balance_a) == pay_amount, EZeroAmount);
             sui::balance::join<CoinTypeA>(&mut pool.coin_a, balance_a);
             sui::balance::destroy_zero<CoinTypeB>(balance_b);
         } else {
-            assert!(sui::balance::value<CoinTypeB>(&balance_b) == pay_amount, 0);
+            assert!(sui::balance::value<CoinTypeB>(&balance_b) == pay_amount, EZeroAmount);
             sui::balance::join<CoinTypeB>(&mut pool.coin_b, balance_b);
             sui::balance::destroy_zero<CoinTypeA>(balance_a);
         };
@@ -3021,11 +3055,11 @@ module clmm_pool::pool {
     /// * `receipt` - Receipt containing the flash swap operation details
     ///
     /// # Aborts
-    /// * If the pool is paused (error code: 13)
-    /// * If the pool ID in the receipt does not match the pool's ID (error code: 14)
-    /// * If the partner ID in the receipt does not match the partner's ID (error code: 14)
-    /// * If the balance of token A does not match the expected amount (error code: 0)
-    /// * If the balance of token B does not match the expected amount (error code: 0)
+    /// * If the pool is paused (error code: EPoolPaused)
+    /// * If the pool ID in the receipt does not match the pool's ID (error code: EInvalidPoolOrPartnerId)
+    /// * If the partner ID in the receipt does not match the partner's ID (error code: EPartnerIdMismatch)
+    /// * If the balance of token A does not match the expected amount (error code: EZeroAmount)
+    /// * If the balance of token B does not match the expected amount (error code: EZeroAmount)
     public fun repay_flash_swap_with_partner<CoinTypeA, CoinTypeB>(
         global_config: &clmm_pool::config::GlobalConfig,
         pool: &mut Pool<CoinTypeA, CoinTypeB>,
@@ -3035,7 +3069,7 @@ module clmm_pool::pool {
         receipt: FlashSwapReceipt<CoinTypeA, CoinTypeB>
     ) {
         clmm_pool::config::checked_package_version(global_config);
-        assert!(!pool.is_pause, 13);
+        assert!(!pool.is_pause, EPoolPaused);
         let FlashSwapReceipt {
             pool_id: pool_id,
             a2b: a2b,
@@ -3046,17 +3080,17 @@ module clmm_pool::pool {
             ref_fee_amount: ref_fee_amount,
             gauge_fee_amount: _,
         } = receipt;
-        assert!(sui::object::id<Pool<CoinTypeA, CoinTypeB>>(pool) == pool_id, 14);
-        assert!(sui::object::id<clmm_pool::partner::Partner>(partner) == partner_id, 15);
+        assert!(sui::object::id<Pool<CoinTypeA, CoinTypeB>>(pool) == pool_id, EInvalidPoolOrPartnerId);
+        assert!(sui::object::id<clmm_pool::partner::Partner>(partner) == partner_id, EPartnerIdMismatch);
         if (a2b) {
-            assert!(sui::balance::value<CoinTypeA>(&balance_a) == pay_amount, 0);
+            assert!(sui::balance::value<CoinTypeA>(&balance_a) == pay_amount, EZeroAmount);
             if (ref_fee_amount > 0) {
                 clmm_pool::partner::receive_ref_fee<CoinTypeA>(partner, sui::balance::split<CoinTypeA>(&mut balance_a, ref_fee_amount));
             };
             sui::balance::join<CoinTypeA>(&mut pool.coin_a, balance_a);
             sui::balance::destroy_zero<CoinTypeB>(balance_b);
         } else {
-            assert!(sui::balance::value<CoinTypeB>(&balance_b) == pay_amount, 0);
+            assert!(sui::balance::value<CoinTypeB>(&balance_b) == pay_amount, EZeroAmount);
             if (ref_fee_amount > 0) {
                 clmm_pool::partner::receive_ref_fee<CoinTypeB>(partner, sui::balance::split<CoinTypeB>(&mut balance_b, ref_fee_amount));
             };
@@ -3186,8 +3220,8 @@ module clmm_pool::pool {
     /// * `clock` - Reference to the Sui clock for timestamp verification
     ///
     /// # Aborts
-    /// * If the pool is paused (error code: 13)
-    /// * If the liquidity amount is zero (error code: 9223379140730683391)
+    /// * If the pool is paused (error code: EPoolPaused)
+    /// * If the liquidity amount is zero (error code: EZeroLiquidity)
     /// * If the gauge capability verification fails
     public fun stake_in_fullsail_distribution<CoinTypeA, CoinTypeB>(
         pool: &mut Pool<CoinTypeA, CoinTypeB>,
@@ -3197,8 +3231,8 @@ module clmm_pool::pool {
         tick_upper: integer_mate::i32::I32,
         clock: &sui::clock::Clock
     ) {
-        assert!(!pool.is_pause, 13);
-        assert!(liquidity != 0, 9223379140730683391);
+        assert!(!pool.is_pause, EPoolPaused);
+        assert!(liquidity != 0, EZeroLiquidity);
         check_gauge_cap<CoinTypeA, CoinTypeB>(pool, gauge_cap);
         update_fullsail_distribution_internal<CoinTypeA, CoinTypeB>(
             pool,
@@ -3322,8 +3356,8 @@ module clmm_pool::pool {
     /// - Final square root price and tick index
     ///
     /// # Aborts
-    /// * If the referral fee rate exceeds 10000 (error code: 16)
-    /// * If there are no more ticks available for the swap (error code: 20)
+    /// * If the referral fee rate exceeds protocol_fee_rate_denom (error code: EInvalidRefFeeRate)
+    /// * If there are no more ticks available for the swap (error code: ENextTickNotFound)
    fun swap_in_pool<CoinTypeA, CoinTypeB>(
         pool: &mut Pool<CoinTypeA, CoinTypeB>,
         a2b: bool,
@@ -3335,7 +3369,7 @@ module clmm_pool::pool {
         ref_fee_rate: u64,
         clock: &sui::clock::Clock
     ): SwapResult {
-        assert!(ref_fee_rate <= 10000, 16);
+        assert!(ref_fee_rate <= clmm_pool::config::protocol_fee_rate_denom(), EInvalidRefFeeRate);
         let mut swap_result = default_swap_result();
         let mut remaining_amount = amount;
         let mut next_tick_score = clmm_pool::tick::first_score_for_swap(
@@ -3345,7 +3379,7 @@ module clmm_pool::pool {
         );
         while (remaining_amount > 0 && pool.current_sqrt_price != sqrt_price_limit) {
             if (move_stl::option_u64::is_none(&next_tick_score)) {
-                abort 20
+                abort ENextTickNotFound
             };
             let (tick_info, next_score) = clmm_pool::tick::borrow_tick_for_swap(
                 &pool.tick_manager, 
@@ -3483,7 +3517,7 @@ module clmm_pool::pool {
     /// * `period_finish` - Timestamp when the distribution period ends
     ///
     /// # Aborts
-    /// * If the pool is paused (error code: 13)
+    /// * If the pool is paused (error code: EPoolPaused)
     /// * If the gauge capability verification fails
     public fun sync_fullsail_distribution_reward<CoinTypeA, CoinTypeB>(
         pool: &mut Pool<CoinTypeA, CoinTypeB>,
@@ -3492,7 +3526,7 @@ module clmm_pool::pool {
         distribution_reserve: u64,
         period_finish: u64
     ) {
-        assert!(!pool.is_pause, 13);
+        assert!(!pool.is_pause, EPoolPaused);
         check_gauge_cap<CoinTypeA, CoinTypeB>(pool, gauge_cap);
         pool.fullsail_distribution_rate = distribution_rate;
         pool.fullsail_distribution_reserve = distribution_reserve;
@@ -3545,7 +3579,7 @@ module clmm_pool::pool {
     ) {
         clmm_pool::config::checked_package_version(global_config);
         clmm_pool::config::check_pool_manager_role(global_config, sui::tx_context::sender(ctx));
-        assert!(pool.is_pause, 9223378204427812863);
+        assert!(pool.is_pause, EPoolNotPaused);
         pool.is_pause = false;
     }
 
@@ -3560,8 +3594,8 @@ module clmm_pool::pool {
     /// * `clock` - Reference to the Sui clock for timestamp verification
     /// 
     /// # Aborts
-    /// * If the pool is paused (error code: 13)
-    /// * If the liquidity amount is zero (error code: 9223379200860225535)
+    /// * If the pool is paused (error code: EPoolPaused)
+    /// * If the liquidity amount is zero (error code: EZeroUnstakeLiquidity)
     /// * If gauge capability verification fails
     public fun unstake_from_fullsail_distribution<CoinTypeA, CoinTypeB>(
         pool: &mut Pool<CoinTypeA, CoinTypeB>,
@@ -3571,8 +3605,8 @@ module clmm_pool::pool {
         tick_upper: integer_mate::i32::I32,
         clock: &sui::clock::Clock
     ) {
-        assert!(!pool.is_pause, 13);
-        assert!(liquidity != 0, 9223379200860225535);
+        assert!(!pool.is_pause, EPoolPaused);
+        assert!(liquidity != 0, EZeroUnstakeLiquidity);
         check_gauge_cap<CoinTypeA, CoinTypeB>(pool, gauge_cap);
         update_fullsail_distribution_internal<CoinTypeA, CoinTypeB>(
             pool,
@@ -3617,8 +3651,8 @@ module clmm_pool::pool {
     /// * `ctx` - Mutable reference to the transaction context for sender verification
     /// 
     /// # Aborts
-    /// * If the pool is paused (error code: 13)
-    /// * If the new fee rate exceeds the maximum allowed fee rate (error code: 9)
+    /// * If the pool is paused (error code: EPoolPaused)
+    /// * If the new fee rate exceeds the maximum allowed fee rate (error code: EInvalidFeeRate)
     /// * If the caller does not have pool manager role
     /// * If the package version check fails
     /// 
@@ -3634,9 +3668,9 @@ module clmm_pool::pool {
         ctx: &mut sui::tx_context::TxContext
     ) {
         clmm_pool::config::checked_package_version(global_config);
-        assert!(!pool.is_pause, 13);
+        assert!(!pool.is_pause, EPoolPaused);
         if (fee_rate > clmm_pool::config::max_fee_rate()) {
-            abort 9
+            abort EInvalidFeeRate
         };
         clmm_pool::config::check_pool_manager_role(global_config, sui::tx_context::sender(ctx));
         pool.fee_rate = fee_rate;
@@ -3657,14 +3691,14 @@ module clmm_pool::pool {
     /// * `clock` - Reference to the Sui clock for timestamp verification
     /// 
     /// # Aborts
-    /// * If the pool is paused (error code: 13)
+    /// * If the pool is paused (error code: EPoolPaused)
     /// * If gauge capability verification fails
     public fun update_fullsail_distribution_growth_global<CoinTypeA, CoinTypeB>(
         pool: &mut Pool<CoinTypeA, CoinTypeB>,
         gauge_cap: &gauge_cap::gauge_cap::GaugeCap,
         clock: &sui::clock::Clock
     ) {
-        assert!(!pool.is_pause, 13);
+        assert!(!pool.is_pause, EPoolPaused);
         check_gauge_cap<CoinTypeA, CoinTypeB>(pool, gauge_cap);
         update_fullsail_distribution_growth_global_internal<CoinTypeA, CoinTypeB>(pool, clock);
     }
@@ -3690,7 +3724,7 @@ module clmm_pool::pool {
                 let calculated_distribution = integer_mate::full_math_u128::mul_div_floor(
                     pool.fullsail_distribution_rate,
                     time_delta as u128,
-                    18446744073709551616
+                    Q64
                 ) as u64;
                 let mut actual_distribution = calculated_distribution;
                 if (calculated_distribution > pool.fullsail_distribution_reserve) {
@@ -3700,7 +3734,7 @@ module clmm_pool::pool {
                 if (pool.fullsail_distribution_staked_liquidity > 0) {
                     pool.fullsail_distribution_growth_global = pool.fullsail_distribution_growth_global + integer_mate::full_math_u128::mul_div_floor(
                         actual_distribution as u128,
-                        18446744073709551616,
+                        Q64,
                         pool.fullsail_distribution_staked_liquidity
                     );
                 } else {
@@ -3724,7 +3758,7 @@ module clmm_pool::pool {
     /// * `clock` - Reference to the Sui clock for timestamp verification
     /// 
     /// # Aborts
-    /// * If attempting to remove more liquidity than is currently staked (error code: 9223379024766566399)
+    /// * If attempting to remove more liquidity than is currently staked (error code: EInsufficientStakedLiquidity)
     fun update_fullsail_distribution_internal<CoinTypeA, CoinTypeB>(
         pool: &mut Pool<CoinTypeA, CoinTypeB>,
         liquidity_delta: integer_mate::i128::I128,
@@ -3740,14 +3774,14 @@ module clmm_pool::pool {
             if (integer_mate::i128::is_neg(liquidity_delta)) {
                 assert!(
                     pool.fullsail_distribution_staked_liquidity >= integer_mate::i128::abs_u128(liquidity_delta),
-                    9223379024766566399
+                    EInsufficientStakedLiquidity
                 );
             } else {
                 let (_, overflow) = integer_mate::i128::overflowing_add(
                     integer_mate::i128::from(pool.fullsail_distribution_staked_liquidity),
                     liquidity_delta
                 );
-                assert!(!overflow, 9223379033357877270);
+                assert!(!overflow, ELiquidityAdditionOverflow);
             };
             pool.fullsail_distribution_staked_liquidity = integer_mate::i128::as_u128(
                 integer_mate::i128::add(integer_mate::i128::from(pool.fullsail_distribution_staked_liquidity), liquidity_delta)
@@ -3773,7 +3807,7 @@ module clmm_pool::pool {
     /// * `ctx` - Mutable reference to the transaction context for sender verification
     /// 
     /// # Aborts
-    /// * If the pool is paused (error code: 13)
+    /// * If the pool is paused (error code: EPoolPaused)
     /// * If the caller does not have pool manager role
     /// * If the package version check fails
     public fun update_position_url<CoinTypeA, CoinTypeB>(
@@ -3783,7 +3817,7 @@ module clmm_pool::pool {
         ctx: &mut sui::tx_context::TxContext
     ) {
         clmm_pool::config::checked_package_version(global_config);
-        assert!(!pool.is_pause, 13);
+        assert!(!pool.is_pause, EPoolPaused);
         clmm_pool::config::check_pool_manager_role(global_config, sui::tx_context::sender(ctx));
         pool.url = new_url;
     }
@@ -3801,9 +3835,9 @@ module clmm_pool::pool {
     /// * `gauge_fee_delta` - Change in gauge fee amount
     /// 
     /// # Aborts
-    /// * If amount_in addition would overflow (error code: 6)
-    /// * If amount_out addition would overflow (error code: 7)
-    /// * If fee_amount addition would overflow (error code: 8)
+    /// * If amount_in addition would overflow (error code: EAmountInOverflow)
+    /// * If amount_out addition would overflow (error code: EAmountOutOverflow)
+    /// * If fee_amount addition would overflow (error code: EFeeAmountOverflow)
     fun update_swap_result(
         swap_result: &mut SwapResult,
         amount_in_delta: u64,
@@ -3813,9 +3847,9 @@ module clmm_pool::pool {
         ref_fee_delta: u64,
         gauge_fee_delta: u64
     ) {
-        assert!(integer_mate::math_u64::add_check(swap_result.amount_in, amount_in_delta), 6);
-        assert!(integer_mate::math_u64::add_check(swap_result.amount_out, amount_out_delta), 7);
-        assert!(integer_mate::math_u64::add_check(swap_result.fee_amount, fee_amount_delta), 8);
+        assert!(integer_mate::math_u64::add_check(swap_result.amount_in, amount_in_delta), EAmountInOverflow);
+        assert!(integer_mate::math_u64::add_check(swap_result.amount_out, amount_out_delta), EAmountOutOverflow);
+        assert!(integer_mate::math_u64::add_check(swap_result.fee_amount, fee_amount_delta), EFeeAmountOverflow);
         swap_result.amount_in = swap_result.amount_in + amount_in_delta;
         swap_result.amount_out = swap_result.amount_out + amount_out_delta;
         swap_result.fee_amount = swap_result.fee_amount + fee_amount_delta;
@@ -3835,9 +3869,9 @@ module clmm_pool::pool {
     /// * `ctx` - Mutable reference to the transaction context for sender verification
     /// 
     /// # Aborts
-    /// * If the pool is paused (error code: 13)
-    /// * If the new fee rate is invalid (error code: 9)
-    /// * If the new fee rate equals the current fee rate (error code: 9)
+    /// * If the pool is paused (error code: EPoolPaused)
+    /// * If the new fee rate is invalid (error code: EInvalidFeeRate)
+    /// * If the new fee rate equals the current fee rate (error code: EInvalidFeeRate)
     /// * If the caller does not have pool manager role
     /// * If the package version check fails
     /// 
@@ -3853,13 +3887,13 @@ module clmm_pool::pool {
         ctx: &mut sui::tx_context::TxContext
     ) {
         clmm_pool::config::checked_package_version(global_config);
-        assert!(!pool.is_pause, 13);
+        assert!(!pool.is_pause, EPoolPaused);
         assert!(
             new_fee_rate == clmm_pool::config::default_unstaked_fee_rate() || 
             new_fee_rate <= clmm_pool::config::max_unstaked_liquidity_fee_rate(),
-            9
+            EInvalidFeeRate
         );
-        assert!(new_fee_rate != pool.unstaked_liquidity_fee_rate, 9);
+        assert!(new_fee_rate != pool.unstaked_liquidity_fee_rate, EInvalidFeeRate);
         clmm_pool::config::check_pool_manager_role(global_config, sui::tx_context::sender(ctx));
         pool.unstaked_liquidity_fee_rate = new_fee_rate;
         let event = UpdateUnstakedLiquidityFeeRateEvent {
@@ -3888,9 +3922,9 @@ module clmm_pool::pool {
     /// * `position` - Reference to the position to validate
     /// 
     /// # Aborts
-    /// * If the position's pool ID does not match this pool's ID (error code: 9223373806381301759)
+    /// * If the position's pool ID does not match this pool's ID (error code: EPositionPoolIdMismatch)
     fun validate_pool_position<CoinTypeA, CoinTypeB>(pool: &Pool<CoinTypeA, CoinTypeB>, position: &clmm_pool::position::Position) {
-        assert!(sui::object::id<Pool<CoinTypeA, CoinTypeB>>(pool) == clmm_pool::position::pool_id(position), 9223373806381301759);
+        assert!(sui::object::id<Pool<CoinTypeA, CoinTypeB>>(pool) == clmm_pool::position::pool_id(position), EPositionPoolIdMismatch);
     }
 
     #[test_only]
