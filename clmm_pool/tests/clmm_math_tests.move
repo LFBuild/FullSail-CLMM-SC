@@ -1,7 +1,6 @@
 #[test_only]
 module clmm_pool::clmm_math_tests {
     use clmm_pool::clmm_math;
-    use std::debug;
 
     #[test]
     fun test_compute_swap_step_zero_liquidity() {

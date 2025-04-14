@@ -598,8 +598,7 @@ module clmm_pool::rewarder_tests {
             let coin = coin::mint_for_testing<MY_COIN>(100000000, scenario.ctx());
             let balance = coin::into_balance(coin);
             rewarder::deposit_reward(&global_config, &mut vault, balance);
-            
-            // Debug prints before update
+
             let initial_balance = rewarder::balance_of<MY_COIN>(&vault);
             
             // Set emission rate

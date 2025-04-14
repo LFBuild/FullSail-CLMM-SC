@@ -21,6 +21,8 @@ module clmm_pool::pool {
 
     const EInsufficientStakedLiquidity: u64 = 9223379024766566399;
 
+    const Q64: u128 = 18446744073709551616;
+
     public struct POOL has drop {}
 
     /// The main pool structure that represents a liquidity pool for a specific token pair.
@@ -1223,10 +1225,10 @@ module clmm_pool::pool {
         } else {
             let (staked_fee, unstaked_fee) = if (staked_liquidity == 0) {
                 let (unstaked_amount, unstaked_fee_amount) = apply_unstaked_fees(fee_amount as u128, 0, unstaked_fee_rate);
-                (integer_mate::full_math_u128::mul_div_floor(unstaked_amount, 18446744073709551616, total_liquidity), unstaked_fee_amount as u64)
+                (integer_mate::full_math_u128::mul_div_floor(unstaked_amount, Q64, total_liquidity), unstaked_fee_amount as u64)
             } else {
                 let (staked_amount, unstaked_fee_amount) = split_fees(fee_amount, total_liquidity, staked_liquidity, unstaked_fee_rate);
-                (integer_mate::full_math_u128::mul_div_floor(staked_amount as u128, 18446744073709551616, total_liquidity - staked_liquidity), unstaked_fee_amount)
+                (integer_mate::full_math_u128::mul_div_floor(staked_amount as u128, Q64, total_liquidity - staked_liquidity), unstaked_fee_amount)
             };
             (staked_fee, unstaked_fee)
         }
@@ -1759,8 +1761,6 @@ module clmm_pool::pool {
         let (tick_lower, tick_upper) = clmm_pool::position::tick_range(position);
         let (fee_amount_a, fee_amount_b) = if (update_fee && clmm_pool::position::liquidity(position) != 0) {
             let (fee_growth_a, fee_growth_b) = get_fee_in_tick_range<CoinTypeA, CoinTypeB>(pool, tick_lower, tick_upper);
-            std::debug::print(&fee_growth_a);
-            std::debug::print(&fee_growth_b);
             let (amount_a, amount_b) = clmm_pool::position::update_and_reset_fee(&mut pool.position_manager, position_id, fee_growth_a, fee_growth_b);
             (amount_a, amount_b)
         } else {
@@ -2277,8 +2277,6 @@ module clmm_pool::pool {
             tick_lower_info,
             tick_upper_info
         );
-        std::debug::print(&std::string::utf8(b"rewards_growth_global"));
-        std::debug::print(&clmm_pool::rewarder::rewards_growth_global(&pool.rewarder_manager));
         (
             fee_growth_a,
             fee_growth_b,
@@ -3697,7 +3695,7 @@ module clmm_pool::pool {
                 let calculated_distribution = integer_mate::full_math_u128::mul_div_floor(
                     pool.fullsail_distribution_rate,
                     time_delta as u128,
-                    18446744073709551616
+                    Q64
                 ) as u64;
                 let mut actual_distribution = calculated_distribution;
                 if (calculated_distribution > pool.fullsail_distribution_reserve) {
@@ -3707,7 +3705,7 @@ module clmm_pool::pool {
                 if (pool.fullsail_distribution_staked_liquidity > 0) {
                     pool.fullsail_distribution_growth_global = pool.fullsail_distribution_growth_global + integer_mate::full_math_u128::mul_div_floor(
                         actual_distribution as u128,
-                        18446744073709551616,
+                        Q64,
                         pool.fullsail_distribution_staked_liquidity
                     );
                 } else {

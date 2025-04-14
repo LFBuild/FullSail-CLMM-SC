@@ -366,7 +366,7 @@ module clmm_pool::pool_tests {
                 &global_config,
                 &mut pool,
                 &mut position,
-                100000,  // delta_liquidity - увеличиваем начальную ликвидность
+                100000,
                 &clock
             );
 
@@ -2105,12 +2105,12 @@ module clmm_pool::pool_tests {
                 scenario.ctx()
             );
 
-            // Add liquidity to the position (увеличиваем ликвидность)
+            // Add liquidity to the position
             let addLiquidityReceipt = pool::add_liquidity<TestCoinB, TestCoinA>(
                 &global_config,
                 &mut pool,
                 &mut position,
-                1000000000000000,  // увеличиваем ликвидность
+                1000000000000000,
                 &clock
             );
 
@@ -2132,7 +2132,7 @@ module clmm_pool::pool_tests {
                 &global_config,
                 &mut pool,
                 4294813296,  // tick_lower
-                4294824000,  // tick_upper (сужаем диапазон)
+                4294824000,  // tick_upper
                 scenario.ctx()
             );
 
@@ -2140,7 +2140,7 @@ module clmm_pool::pool_tests {
                 &global_config,
                 &mut pool,
                 &mut position2,
-                100000000000000000,  // увеличиваем ликвидность
+                100000000000000000,
                 &clock
             );
 
@@ -2200,7 +2200,7 @@ module clmm_pool::pool_tests {
                 &mut pool,
                 false,  // a2b
                 true,  // by_amount_in
-                100000000,    // минимальный размер свопа
+                100000000,
                 current_sqrt_price + 10000000,
                 &mut stats,
                 &price_provider,
@@ -2539,7 +2539,7 @@ module clmm_pool::pool_tests {
                 &partner1,
                 true,  // a2b
                 true,  // by_amount_in
-                100,   // размер свопа
+                100,
                 current_sqrt_price - 100000,
                 &mut stats,
                 &price_provider,
@@ -5019,8 +5019,8 @@ module clmm_pool::pool_tests {
             let mut position = pool::open_position<TestCoinB, TestCoinA>(
                 &global_config,
                 &mut pool,
-                0,  // tick_lower
-                100,  // tick_upper
+                100,  // tick_lower
+                200,  // tick_upper
                 scenario.ctx()
             );
 
@@ -5043,6 +5043,12 @@ module clmm_pool::pool_tests {
                 &clock
             );
 
+            pool::mark_position_staked<TestCoinB, TestCoinA>(
+                &mut pool,
+                &gauge_cap,
+                sui::object::id(&position)
+            );
+
             // Verify initial staked liquidity
             let initial_staked_liquidity = pool::get_fullsail_distribution_staked_liquidity<TestCoinB, TestCoinA>(&pool);
             assert!(initial_staked_liquidity == 1000, 1);
@@ -5060,7 +5066,23 @@ module clmm_pool::pool_tests {
             // Verify staked liquidity was reduced
             let final_staked_liquidity = pool::get_fullsail_distribution_staked_liquidity<TestCoinB, TestCoinA>(&pool);
             assert!(final_staked_liquidity == 500, 2);
+
+            let tick = pool::borrow_tick<TestCoinB, TestCoinA>(&pool, i32::from(100));
+            assert!(tick.liquidity_gross() == 1000000000, 3);
+            assert!(tick.fullsail_distribution_staked_liquidity_net().eq(integer_mate::i128::from(500)), 4);
+
+            let ticks = pool::fetch_ticks<TestCoinB, TestCoinA>(
+                &pool,
+                vector[99, 200],
+                2
+            );
+            assert!(ticks.length() == 2, 5);
+            assert!(ticks[0].liquidity_gross() == 1000000000, 6);
+            assert!(ticks[1].liquidity_gross() == 1000000000, 7);
+            assert!(ticks[0].index().eq(integer_mate::i32::from(100)), 8);
+            assert!(ticks[1].index().eq(integer_mate::i32::from(200)), 9);
             
+
             // Return objects to scenario
             pool::destroy_receipt<TestCoinB, TestCoinA>(receipt);
             transfer::public_transfer(pool, admin);
@@ -6212,14 +6234,6 @@ module clmm_pool::pool_tests {
             // Increment time to accumulate rewards
             clock::increment_for_testing(&mut clock, 3600000000000000);
 
-            let points = pool::get_points_in_tick_range<TestCoinB, TestCoinA>(
-                &pool,
-                integer_mate::i32::from(100),
-                integer_mate::i32::from(200)
-            );
-            std::debug::print(&std::string::utf8(b"points"));
-            std::debug::print(&points);
-
             let rewardA = pool::calculate_and_update_reward<TestCoinB, TestCoinA, TestCoinA>(
                 &global_config,
                 &mut pool,
@@ -6400,7 +6414,7 @@ module clmm_pool::pool_tests {
                 &mut pool,
                 false,  // a2b
                 true,  // by_amount_in
-                100000000,    // минимальный размер свопа
+                100000000,
                 18584142135623730951 + 10000000,
                 &mut stats,
                 &price_provider,
@@ -6412,7 +6426,7 @@ module clmm_pool::pool_tests {
                 &mut pool,
                 true,  // a2b
                 true,  // by_amount_in
-                100000000,    // минимальный размер свопа
+                100000000,
                 18584142135623730951 - 10000000,
                 &mut stats,
                 &price_provider,
@@ -6426,9 +6440,6 @@ module clmm_pool::pool_tests {
                 &position,
                 true
             );
-
-            std::debug::print(&fee_a);
-            std::debug::print(&fee_b);
             
             // Verify fees were collected
             assert!(sui::balance::value(&fee_a) == 79920, 1);

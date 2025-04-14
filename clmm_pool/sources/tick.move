@@ -342,7 +342,7 @@ module clmm_pool::tick {
     /// 
     /// # Arguments
     /// * `tick_manager` - Reference to the tick manager
-    /// * `tick_indices` - Vector of tick indices to start from (if empty, starts from first tick)
+    /// * `tick_indexes` - Vector of tick indexes to start from (if empty, starts from first tick)
     /// * `limit` - Maximum number of ticks to return
     /// 
     /// # Returns
@@ -350,14 +350,14 @@ module clmm_pool::tick {
     /// 
     /// # Abort Conditions
     /// * If tick index is out of bounds (error code: 2)
-    public fun fetch_ticks(tick_manager: &TickManager, tick_indices: vector<u32>, limit: u64): vector<Tick> {
+    public fun fetch_ticks(tick_manager: &TickManager, tick_indexes: vector<u32>, limit: u64): vector<Tick> {
         let mut result = std::vector::empty<Tick>();
-        let next_score = if (std::vector::is_empty<u32>(&tick_indices)) {
+        let next_score = if (std::vector::is_empty<u32>(&tick_indexes)) {
             move_stl::skip_list::head<Tick>(&tick_manager.ticks)
         } else {
             move_stl::skip_list::find_next<Tick>(
                 &tick_manager.ticks,
-                tick_score(integer_mate::i32::from_u32(*std::vector::borrow<u32>(&tick_indices, 0))),
+                tick_score(integer_mate::i32::from_u32(*std::vector::borrow<u32>(&tick_indexes, 0))),
                 false
             )
         };

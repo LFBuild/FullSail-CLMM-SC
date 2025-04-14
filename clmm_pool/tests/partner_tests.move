@@ -2,7 +2,6 @@
 module clmm_pool::partner_tests {
     use clmm_pool::partner;
     use clmm_pool::config;
-    use std::debug;
     use std::string;
     use sui::clock;
     use sui::coin;
