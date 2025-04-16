@@ -1,6 +1,6 @@
 module gauge_cap::gauge_cap {
 
-    const ENotOwner: u64 = 0;
+    const ENotOwner: u64 = 923752748582334234;
     
     public struct GAUGE_CAP has drop {}
 

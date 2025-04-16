@@ -24,7 +24,7 @@
 /// * Staking status change events
 module clmm_pool::position {
 
-    const ENotOwner: u64 = 0;
+    const ENotOwner: u64 = 9854893284345743338;
     const EOverflow: u64 = 1;
     const ERewardIndexOutOfBounds: u64 = 2;
     const EFullsailDistributionOverflow: u64 = 3;

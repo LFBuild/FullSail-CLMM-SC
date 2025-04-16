@@ -24,7 +24,7 @@ module clmm_pool::pool {
     // Error codes for the pool module
     const EZeroAmount: u64 = 0;
     const EInsufficientLiquidity: u64 = 1;
-    const ENotOwner: u64 = 2;
+    const ENotOwner: u64 = 9843325239567326443;
     const EZeroLiquidity: u64 = 3;
     const EInsufficientAmount: u64 = 5;
     const EAmountInOverflow: u64 = 6;
