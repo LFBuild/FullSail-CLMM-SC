@@ -1,4 +1,7 @@
 module gauge_cap::gauge_cap {
+
+    const ENotOwner: u64 = 923752748582334234;
+    
     public struct GAUGE_CAP has drop {}
 
     public struct CreateCap has store, key {
@@ -32,6 +35,7 @@ module gauge_cap::gauge_cap {
     }
 
     public fun grant_create_cap(publisher: &sui::package::Publisher, recipient: address, ctx: &mut sui::tx_context::TxContext) {
+        assert!(publisher.from_module<CreateCap>(), ENotOwner);
         let new_cap = CreateCap { id: sui::object::new(ctx) };
         sui::transfer::public_transfer<CreateCap>(new_cap, recipient);
     }

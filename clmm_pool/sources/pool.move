@@ -24,6 +24,7 @@ module clmm_pool::pool {
     // Error codes for the pool module
     const EZeroAmount: u64 = 0;
     const EInsufficientLiquidity: u64 = 1;
+    const ENotOwner: u64 = 9843325239567326443;
     const EZeroLiquidity: u64 = 3;
     const EInsufficientAmount: u64 = 5;
     const EAmountInOverflow: u64 = 6;
@@ -3144,6 +3145,7 @@ module clmm_pool::pool {
         creator: std::string::String,
         ctx: &mut sui::tx_context::TxContext
     ) {
+        assert!(publisher.from_module<Pool<CoinTypeA, CoinTypeB>>(), ENotOwner);
         clmm_pool::config::checked_package_version(global_config);
         let mut keys = std::vector::empty<std::string::String>();
         std::vector::push_back<std::string::String>(&mut keys, std::string::utf8(b"name"));

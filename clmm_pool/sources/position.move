@@ -24,6 +24,7 @@
 /// * Staking status change events
 module clmm_pool::position {
 
+    const ENotOwner: u64 = 9854893284345743338;
     const EOverflow: u64 = 1;
     const ERewardIndexOutOfBounds: u64 = 2;
     const EFullsailDistributionOverflow: u64 = 3;
@@ -940,6 +941,7 @@ module clmm_pool::position {
         creator: std::string::String,
         ctx: &mut sui::tx_context::TxContext
     ) {
+        assert!(publisher.from_module<Position>(), ENotOwner);
         clmm_pool::config::checked_package_version(global_config);
         let mut keys = std::vector::empty<std::string::String>();
         std::vector::push_back<std::string::String>(&mut keys, std::string::utf8(b"name"));
