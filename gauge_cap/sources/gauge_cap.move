@@ -15,9 +15,9 @@ module gauge_cap::gauge_cap {
     }
 
     public fun create_gauge_cap(
-        create_cap: &CreateCap,
-        gauge_id: sui::object::ID,
+        _create_cap: &CreateCap,
         pool_id: sui::object::ID,
+        gauge_id: sui::object::ID,
         tx_context: &mut sui::tx_context::TxContext
     ): GaugeCap {
         GaugeCap {
