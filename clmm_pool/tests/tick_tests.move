@@ -2348,4 +2348,100 @@ module clmm_pool::tick_tests {
         transfer::public_transfer(helper, @0x1);
         test_scenario::end(scenario);
     }
+
+    #[test]
+    fun test_update_liquidity_net() {
+        let mut scenario = test_scenario::begin(@0x1);
+        {
+            let mut helper = TickTestHelper {
+                id: sui::object::new(scenario.ctx()),
+                tick_manager: tick::new(10, 12345, scenario.ctx()),
+            };
+            let tick_manager = get_tick_manager(&mut helper);
+            let current_tick = i32::from(0);
+            let tick_lower = i32::neg_from(10);
+            let tick_upper = i32::from(10);
+            let liquidity = 1000;
+            let fee_growth_global_a = 1000;
+            let fee_growth_global_b = 2000;
+            let points_growth_global = 0;
+            let rewards_growth_global = vector::empty<u128>();
+            let fullsail_distribution_growth_global = 0;
+
+            // First, increase liquidity
+            tick::increase_liquidity(
+                tick_manager,
+                current_tick,
+                tick_lower,
+                tick_upper,
+                liquidity,
+                fee_growth_global_a,
+                fee_growth_global_b,
+                points_growth_global,
+                rewards_growth_global,
+                fullsail_distribution_growth_global
+            );
+
+            // Check that ticks were created
+            let lower_tick = tick::try_borrow_tick(tick_manager, tick_lower);
+            let upper_tick = tick::try_borrow_tick(tick_manager, tick_upper);
+            assert!(std::option::is_some(&lower_tick), 2);
+            assert!(std::option::is_some(&upper_tick), 3);
+            
+            // Check liquidity values
+            let lower_tick_value = std::option::borrow(&lower_tick);
+            let upper_tick_value = std::option::borrow(&upper_tick);
+            assert!(tick::liquidity_gross(lower_tick_value) == liquidity, 4);
+            assert!(tick::liquidity_gross(upper_tick_value) == liquidity, 5);
+
+            assert!(tick::liquidity_net(lower_tick_value) == integer_mate::i128::from(1000), 6);
+            assert!(tick::liquidity_net(upper_tick_value) == integer_mate::i128::neg_from(1000), 7);
+
+            // Decrease liquidity by half
+            tick::decrease_liquidity(
+                tick_manager,
+                current_tick,
+                tick_lower,
+                tick_upper,
+                liquidity,
+                fee_growth_global_a,
+                fee_growth_global_b,
+                points_growth_global,
+                rewards_growth_global,
+                fullsail_distribution_growth_global
+            );
+
+            // repeat
+            tick::increase_liquidity(
+                tick_manager,
+                current_tick,
+                tick_lower,
+                tick_upper,
+                liquidity,
+                fee_growth_global_a,
+                fee_growth_global_b,
+                points_growth_global,
+                rewards_growth_global,
+                fullsail_distribution_growth_global
+            );
+
+            // Check that ticks were created
+            let lower_tick = tick::try_borrow_tick(tick_manager, tick_lower);
+            let upper_tick = tick::try_borrow_tick(tick_manager, tick_upper);
+            assert!(std::option::is_some(&lower_tick), 2);
+            assert!(std::option::is_some(&upper_tick), 3);
+            
+            // Check liquidity values
+            let lower_tick_value = std::option::borrow(&lower_tick);
+            let upper_tick_value = std::option::borrow(&upper_tick);
+            assert!(tick::liquidity_gross(lower_tick_value) == liquidity, 4);
+            assert!(tick::liquidity_gross(upper_tick_value) == liquidity, 5);
+
+            assert!(tick::liquidity_net(lower_tick_value) == integer_mate::i128::from(1000), 6);
+            assert!(tick::liquidity_net(upper_tick_value) == integer_mate::i128::neg_from(1000), 7);
+
+            transfer::public_transfer(helper, @0x1);
+        };
+        scenario.end();
+    }
 }
