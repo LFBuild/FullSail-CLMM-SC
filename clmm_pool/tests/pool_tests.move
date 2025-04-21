@@ -2058,7 +2058,7 @@ module clmm_pool::pool_tests {
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
             stats::init_test(scenario.ctx());
-            price_provider::new(scenario.ctx());
+            price_provider::init_test(scenario.ctx());
             partner::test_init(scenario.ctx());
         };
         
@@ -2246,7 +2246,7 @@ module clmm_pool::pool_tests {
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
             stats::init_test(scenario.ctx());
-            price_provider::new(scenario.ctx());
+            price_provider::init_test(scenario.ctx());
             partner::test_init(scenario.ctx());
         };
         
@@ -2370,7 +2370,7 @@ module clmm_pool::pool_tests {
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
             stats::init_test(scenario.ctx());
-            price_provider::new(scenario.ctx());
+            price_provider::init_test(scenario.ctx());
             partner::test_init(scenario.ctx());
         };
         
@@ -2584,7 +2584,7 @@ module clmm_pool::pool_tests {
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
             stats::init_test(scenario.ctx());
-            price_provider::new(scenario.ctx());
+            price_provider::init_test(scenario.ctx());
             partner::test_init(scenario.ctx());
         };
         
@@ -3124,7 +3124,7 @@ module clmm_pool::pool_tests {
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
             stats::init_test(scenario.ctx());
-            price_provider::new(scenario.ctx());
+            price_provider::init_test(scenario.ctx());
         };
         
         // Add fee tier
@@ -3241,7 +3241,7 @@ module clmm_pool::pool_tests {
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
             stats::init_test(scenario.ctx());
-            price_provider::new(scenario.ctx());
+            price_provider::init_test(scenario.ctx());
         };
         
         // Add fee tier
@@ -3361,7 +3361,7 @@ module clmm_pool::pool_tests {
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
             stats::init_test(scenario.ctx());
-            price_provider::new(scenario.ctx());
+            price_provider::init_test(scenario.ctx());
         };
         
         // Add fee tier
@@ -4259,7 +4259,7 @@ module clmm_pool::pool_tests {
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
             stats::init_test(scenario.ctx());
-            price_provider::new(scenario.ctx());
+            price_provider::init_test(scenario.ctx());
         };
         
         // Add fee tier
@@ -4483,7 +4483,7 @@ module clmm_pool::pool_tests {
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
             stats::init_test(scenario.ctx());
-            price_provider::new(scenario.ctx());
+            price_provider::init_test(scenario.ctx());
             gauge_cap::gauge_cap::init_test(scenario.ctx());
         };
         
@@ -4670,7 +4670,7 @@ module clmm_pool::pool_tests {
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
             stats::init_test(scenario.ctx());
-            price_provider::new(scenario.ctx());
+            price_provider::init_test(scenario.ctx());
         };
         
         // Add fee tier
@@ -4756,7 +4756,7 @@ module clmm_pool::pool_tests {
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
             stats::init_test(scenario.ctx());
-            price_provider::new(scenario.ctx());
+            price_provider::init_test(scenario.ctx());
             gauge_cap::gauge_cap::init_test(scenario.ctx());
         };
         
@@ -4880,7 +4880,7 @@ module clmm_pool::pool_tests {
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
             stats::init_test(scenario.ctx());
-            price_provider::new(scenario.ctx());
+            price_provider::init_test(scenario.ctx());
             gauge_cap::gauge_cap::init_test(scenario.ctx());
         };
         
@@ -4967,7 +4967,7 @@ module clmm_pool::pool_tests {
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
             stats::init_test(scenario.ctx());
-            price_provider::new(scenario.ctx());
+            price_provider::init_test(scenario.ctx());
             gauge_cap::gauge_cap::init_test(scenario.ctx());
         };
         
@@ -5110,7 +5110,7 @@ module clmm_pool::pool_tests {
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
             stats::init_test(scenario.ctx());
-            price_provider::new(scenario.ctx());
+            price_provider::init_test(scenario.ctx());
             gauge_cap::gauge_cap::init_test(scenario.ctx());
         };
         
@@ -5551,7 +5551,7 @@ module clmm_pool::pool_tests {
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
             stats::init_test(scenario.ctx());
-            price_provider::new(scenario.ctx());
+            price_provider::init_test(scenario.ctx());
         };
         
         // Add fee tier and create pool
@@ -5602,7 +5602,7 @@ module clmm_pool::pool_tests {
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
             stats::init_test(scenario.ctx());
-            price_provider::new(scenario.ctx());
+            price_provider::init_test(scenario.ctx());
         };
         
         // Add fee tier and create pool
@@ -5655,7 +5655,7 @@ module clmm_pool::pool_tests {
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
             stats::init_test(scenario.ctx());
-            price_provider::new(scenario.ctx());
+            price_provider::init_test(scenario.ctx());
         };
         
         // Add fee tier and create pool
@@ -5706,7 +5706,7 @@ module clmm_pool::pool_tests {
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
             stats::init_test(scenario.ctx());
-            price_provider::new(scenario.ctx());
+            price_provider::init_test(scenario.ctx());
         };
         
         // Add fee tier and create pool
@@ -5756,7 +5756,7 @@ module clmm_pool::pool_tests {
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
             stats::init_test(scenario.ctx());
-            price_provider::new(scenario.ctx());
+            price_provider::init_test(scenario.ctx());
         };
         
         // Add fee tier and create pool
@@ -6068,7 +6068,7 @@ module clmm_pool::pool_tests {
             config::test_init(scenario.ctx());
             gauge_cap::gauge_cap::init_test(scenario.ctx());
             stats::init_test(scenario.ctx());
-            price_provider::new(scenario.ctx());
+            price_provider::init_test(scenario.ctx());
             rewarder::test_init(scenario.ctx());
         };
         
@@ -6342,7 +6342,7 @@ module clmm_pool::pool_tests {
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
             stats::init_test(scenario.ctx());
-            price_provider::new(scenario.ctx());
+            price_provider::init_test(scenario.ctx());
         };
         
         // Add fee tier
@@ -6480,7 +6480,7 @@ module clmm_pool::pool_tests {
             config::test_init(scenario.ctx());
             gauge_cap::gauge_cap::init_test(scenario.ctx());
             stats::init_test(scenario.ctx());
-            price_provider::new(scenario.ctx());
+            price_provider::init_test(scenario.ctx());
         };
         
         // Add fee tier
@@ -6611,7 +6611,7 @@ module clmm_pool::pool_tests {
             config::test_init(scenario.ctx());
             gauge_cap::gauge_cap::init_test(scenario.ctx());
             stats::init_test(scenario.ctx());
-            price_provider::new(scenario.ctx());
+            price_provider::init_test(scenario.ctx());
         };
         
         // Add fee tier
