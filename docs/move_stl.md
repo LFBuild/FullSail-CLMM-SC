@@ -13,7 +13,7 @@ Skip list data structure implementation
 Same as skip_list.move, but for u128 data type
 
 ### linked_table.move
-Linked bidirection list implementation (main purpose is to store different levels lists for skip list)
+Extension of sui object with dynamic fields. Dynamic fields are used for storing key-value pairs. No top of this there is linked bidirection list implementation for iterability
 
 ### random.move
 Pseudo-random number generator. Mainly used for skip list. For that reason it's not required to guarantee absence of potential abuses.
