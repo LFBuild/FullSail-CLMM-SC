@@ -1939,7 +1939,6 @@ module clmm_pool::pool {
     /// * If the rewarder index is not found (error code: ERewarderIndexNotFound)
     public fun collect_reward<CoinTypeA, CoinTypeB, RewardCoinType>(
         global_config: &clmm_pool::config::GlobalConfig,
-        vault: &mut clmm_pool::rewarder::RewarderGlobalVault,
         pool: &mut Pool<CoinTypeA, CoinTypeB>,
         position: &clmm_pool::position::Position,
         rewarder_vault: &mut clmm_pool::rewarder::RewarderGlobalVault,
@@ -1948,7 +1947,7 @@ module clmm_pool::pool {
     ): sui::balance::Balance<RewardCoinType> {
         clmm_pool::config::checked_package_version(global_config);
         assert!(!pool.is_pause, EPoolPaused);
-        clmm_pool::rewarder::settle(vault, &mut pool.rewarder_manager, pool.liquidity, sui::clock::timestamp_ms(clock) / 1000);
+        clmm_pool::rewarder::settle(rewarder_vault, &mut pool.rewarder_manager, pool.liquidity, sui::clock::timestamp_ms(clock) / 1000);
         let position_id = sui::object::id<clmm_pool::position::Position>(position);
         let mut rewarder_idx = clmm_pool::rewarder::rewarder_index<RewardCoinType>(&pool.rewarder_manager);
         assert!(std::option::is_some<u64>(&rewarder_idx), ERewarderIndexNotFound);

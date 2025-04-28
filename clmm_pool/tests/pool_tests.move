@@ -1,19 +1,7 @@
 #[test_only]
 module clmm_pool::pool_tests {
     use sui::test_scenario;
-    use sui::object;
-    use sui::package;
     use sui::clock;
-    use sui::tx_context;
-    use sui::transfer;
-    use sui::event;
-    use sui::balance;
-    use move_stl::linked_table;
-    use std::type_name;
-    use std::ascii;
-    use std::string;
-    use sui::hash;
-    use sui::bcs;
     use integer_mate::i32;
     use clmm_pool::rewarder;
 
@@ -161,6 +149,7 @@ module clmm_pool::pool_tests {
         {
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
         };
         
         // Add fee tier
@@ -177,6 +166,7 @@ module clmm_pool::pool_tests {
         {
             let mut pools = scenario.take_shared<Pools>();
             let global_config = scenario.take_shared<config::GlobalConfig>();
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             let clock = clock::create_for_testing(scenario.ctx());
             
             // Create a new pool
@@ -204,6 +194,7 @@ module clmm_pool::pool_tests {
 
             // Add liquidity to the position
             let receipt = pool::add_liquidity_internal_test<TestCoinB, TestCoinA>(
+                &mut vault,
                 &mut pool,
                 &mut position,
                 true,  // is_fix_amount
@@ -224,6 +215,7 @@ module clmm_pool::pool_tests {
             transfer::public_transfer(pool, admin);
             transfer::public_transfer(position, admin);
             test_scenario::return_shared(pools);
+            test_scenario::return_shared(vault);
             test_scenario::return_shared(global_config);
             clock::destroy_for_testing(clock);
             transfer::public_transfer(test_manager, admin);
@@ -246,6 +238,7 @@ module clmm_pool::pool_tests {
         {
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
         };
         
         // Add fee tier
@@ -262,6 +255,7 @@ module clmm_pool::pool_tests {
         {
             let mut pools = scenario.take_shared<Pools>();
             let global_config = scenario.take_shared<config::GlobalConfig>();
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             let clock = clock::create_for_testing(scenario.ctx());
             
             // Create a new pool
@@ -289,6 +283,7 @@ module clmm_pool::pool_tests {
 
             // Try to add liquidity to the position (should fail)
             let receipt = pool::add_liquidity_internal_test<TestCoinB, TestCoinA>(
+                &mut vault,
                 &mut pool,
                 &mut position,
                 true,  // is_fix_amount
@@ -304,6 +299,7 @@ module clmm_pool::pool_tests {
             transfer::public_transfer(pool, admin);
             transfer::public_transfer(position, admin);
             test_scenario::return_shared(pools);
+            test_scenario::return_shared(vault);
             test_scenario::return_shared(global_config);
             clock::destroy_for_testing(clock);
             transfer::public_transfer(test_manager, admin);
@@ -321,6 +317,7 @@ module clmm_pool::pool_tests {
         {
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
         };
         
         // Add fee tier
@@ -336,6 +333,7 @@ module clmm_pool::pool_tests {
         scenario.next_tx(admin);
         {
             let global_config = scenario.take_shared<config::GlobalConfig>();
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             let clock = clock::create_for_testing(scenario.ctx());
             
             // Create a new pool
@@ -364,6 +362,7 @@ module clmm_pool::pool_tests {
             // Add liquidity to the position
             let receipt = pool::add_liquidity<TestCoinB, TestCoinA>(
                 &global_config,
+                &mut vault,
                 &mut pool,
                 &mut position,
                 100000,
@@ -384,6 +383,7 @@ module clmm_pool::pool_tests {
             transfer::public_transfer(pool, admin);
             transfer::public_transfer(position, admin);
             test_scenario::return_shared(global_config);
+            test_scenario::return_shared(vault);
             clock::destroy_for_testing(clock);
         };
         
@@ -399,6 +399,7 @@ module clmm_pool::pool_tests {
         {
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
         };
         
         // Add fee tier
@@ -415,6 +416,7 @@ module clmm_pool::pool_tests {
         {
             let mut pools = scenario.take_shared<Pools>();
             let global_config = scenario.take_shared<config::GlobalConfig>();
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             let clock = clock::create_for_testing(scenario.ctx());
             
             // Create a new pool with current_sqrt_price = 1.0025 (corresponds to tick = 25)
@@ -443,6 +445,7 @@ module clmm_pool::pool_tests {
             // Add liquidity with fixed amount of coin B
             let receipt = pool::add_liquidity_fix_coin<TestCoinB, TestCoinA>(
                 &global_config,
+                &mut vault,
                 &mut pool,
                 &mut position,
                 100,  // amount_in (fixed amount of coin B)
@@ -465,6 +468,7 @@ module clmm_pool::pool_tests {
             transfer::public_transfer(position, admin);
             test_scenario::return_shared(pools);
             test_scenario::return_shared(global_config);
+            test_scenario::return_shared(vault);
             clock::destroy_for_testing(clock);
         };
         
@@ -481,6 +485,7 @@ module clmm_pool::pool_tests {
         {
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
         };
         
         // Add fee tier
@@ -497,6 +502,7 @@ module clmm_pool::pool_tests {
         {
             let mut pools = scenario.take_shared<Pools>();
             let global_config = scenario.take_shared<config::GlobalConfig>();
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             let clock = clock::create_for_testing(scenario.ctx());
             
             // Create a new pool
@@ -525,6 +531,7 @@ module clmm_pool::pool_tests {
             // Try to add liquidity with zero amount (should fail)
             let receipt = pool::add_liquidity_fix_coin<TestCoinB, TestCoinA>(
                 &global_config,
+                &mut vault,
                 &mut pool,
                 &mut position,
                 0,  // amount_in
@@ -539,6 +546,7 @@ module clmm_pool::pool_tests {
             transfer::public_transfer(position, admin);
             test_scenario::return_shared(pools);
             test_scenario::return_shared(global_config);
+            test_scenario::return_shared(vault);
             clock::destroy_for_testing(clock);
         };
         
@@ -555,6 +563,7 @@ module clmm_pool::pool_tests {
         {
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
         };
         
         // Add fee tier
@@ -571,6 +580,7 @@ module clmm_pool::pool_tests {
         {
             let mut pools = scenario.take_shared<Pools>();
             let global_config = scenario.take_shared<config::GlobalConfig>();
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             let clock = clock::create_for_testing(scenario.ctx());
             
             // Create a pool
@@ -606,6 +616,7 @@ module clmm_pool::pool_tests {
             // Try to add liquidity to paused pool (should fail)
             let receipt = pool::add_liquidity_fix_coin<TestCoinB, TestCoinA>(
                 &global_config,
+                &mut vault,
                 &mut pool,
                 &mut position,
                 100,  // amount_in
@@ -620,6 +631,7 @@ module clmm_pool::pool_tests {
             transfer::public_transfer(position, admin);
             test_scenario::return_shared(pools);
             test_scenario::return_shared(global_config);
+            test_scenario::return_shared(vault);
             clock::destroy_for_testing(clock);
         };
         
@@ -755,7 +767,7 @@ module clmm_pool::pool_tests {
             );
 
             // Create a new position with tick_lower = 0 and tick_upper = 50
-            let mut position = pool::open_position<TestCoinB, TestCoinA>(
+            let position = pool::open_position<TestCoinB, TestCoinA>(
                 &global_config,
                 &mut pool,
                 0,  // tick_lower
@@ -842,7 +854,7 @@ module clmm_pool::pool_tests {
             );
 
             // Create a new position with tick_lower = -100 and tick_upper = 0
-            let mut position = pool::open_position<TestCoinB, TestCoinA>(
+            let position = pool::open_position<TestCoinB, TestCoinA>(
                 &global_config,
                 &mut pool,
                 4294967196,  // tick_lower (-100)
@@ -911,7 +923,6 @@ module clmm_pool::pool_tests {
         
         scenario.next_tx(admin);
         {
-            let mut pools = scenario.take_shared<Pools>();
             let global_config = scenario.take_shared<config::GlobalConfig>();
             let clock = clock::create_for_testing(scenario.ctx());
             
@@ -930,7 +941,7 @@ module clmm_pool::pool_tests {
             );
 
             // Create a new position with tick_lower = 0 and tick_upper = 50
-            let mut position = pool::open_position<TestCoinB, TestCoinA>(
+            let position = pool::open_position<TestCoinB, TestCoinA>(
                 &global_config,
                 &mut pool,
                 0,  // tick_lower
@@ -940,7 +951,7 @@ module clmm_pool::pool_tests {
 
             // Test get_liquidity_from_amount with fixed amount of coin A
             // This should fail because current_tick is on the boundary
-            let (liquidity_a, amount_a, amount_b) = pool::get_liquidity_from_amount(
+            pool::get_liquidity_from_amount(
                 i32::from_u32(0),  // tick_lower
                 i32::from_u32(50), // tick_upper
                 i32::from_u32(60), // current_tick
@@ -952,7 +963,6 @@ module clmm_pool::pool_tests {
             // Return objects to scenario
             transfer::public_transfer(pool, admin);
             transfer::public_transfer(position, admin);
-            test_scenario::return_shared(pools);
             test_scenario::return_shared(global_config);
             clock::destroy_for_testing(clock);
         };
@@ -969,6 +979,7 @@ module clmm_pool::pool_tests {
         {
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
         };
         
         // Add fee tier
@@ -983,8 +994,8 @@ module clmm_pool::pool_tests {
         
         scenario.next_tx(admin);
         {
-            let mut pools = scenario.take_shared<Pools>();
             let global_config = scenario.take_shared<config::GlobalConfig>();
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             let clock = clock::create_for_testing(scenario.ctx());
             
             // Create a new pool with current_sqrt_price = 1.0025 (corresponds to tick = 25)
@@ -1013,6 +1024,7 @@ module clmm_pool::pool_tests {
             // Add liquidity to the position
             let receipt = pool::add_liquidity<TestCoinB, TestCoinA>(
                 &global_config,
+                &mut vault,
                 &mut pool,
                 &mut position,
                 10000000,  // delta_liquidity
@@ -1054,8 +1066,8 @@ module clmm_pool::pool_tests {
             // Return objects to scenario
             transfer::public_transfer(pool, admin);
             transfer::public_transfer(position, admin);
-            test_scenario::return_shared(pools);
             test_scenario::return_shared(global_config);
+            test_scenario::return_shared(vault);
             clock::destroy_for_testing(clock);
         };
         
@@ -1071,6 +1083,7 @@ module clmm_pool::pool_tests {
         {
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
         };
         
         // Add fee tier
@@ -1085,8 +1098,8 @@ module clmm_pool::pool_tests {
         
         scenario.next_tx(admin);
         {
-            let mut pools = scenario.take_shared<Pools>();
             let global_config = scenario.take_shared<config::GlobalConfig>();
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             let clock = clock::create_for_testing(scenario.ctx());
             
             // Create a new pool with current_sqrt_price = 1.0025 (corresponds to tick = 25)
@@ -1115,6 +1128,7 @@ module clmm_pool::pool_tests {
             // Add liquidity to the position
             let receipt = pool::add_liquidity<TestCoinB, TestCoinA>(
                 &global_config,
+                &mut vault,
                 &mut pool,
                 &mut position,
                 10000000,  // delta_liquidity
@@ -1140,8 +1154,8 @@ module clmm_pool::pool_tests {
             // Return objects to scenario
             transfer::public_transfer(pool, admin);
             transfer::public_transfer(position, admin);
-            test_scenario::return_shared(pools);
             test_scenario::return_shared(global_config);
+            test_scenario::return_shared(vault);
             clock::destroy_for_testing(clock);
         };
         
@@ -1157,6 +1171,7 @@ module clmm_pool::pool_tests {
         {
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
         };
         
         // Add fee tier
@@ -1171,8 +1186,8 @@ module clmm_pool::pool_tests {
         
         scenario.next_tx(admin);
         {
-            let mut pools = scenario.take_shared<Pools>();
             let global_config = scenario.take_shared<config::GlobalConfig>();
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             let clock = clock::create_for_testing(scenario.ctx());
             
             // Create a new pool with current_sqrt_price = 1.0025 (corresponds to tick = 25)
@@ -1201,6 +1216,7 @@ module clmm_pool::pool_tests {
             // Add liquidity to the position
             let receipt = pool::add_liquidity<TestCoinB, TestCoinA>(
                 &global_config,
+                &mut vault,
                 &mut pool,
                 &mut position,
                 10000000,  // delta_liquidity
@@ -1226,8 +1242,8 @@ module clmm_pool::pool_tests {
             // Return objects to scenario
             transfer::public_transfer(pool, admin);
             transfer::public_transfer(position, admin);
-            test_scenario::return_shared(pools);
             test_scenario::return_shared(global_config);
+            test_scenario::return_shared(vault);
             clock::destroy_for_testing(clock);
         };
         
@@ -1243,6 +1259,7 @@ module clmm_pool::pool_tests {
         {
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
         };
         
         // Add fee tier
@@ -1257,8 +1274,8 @@ module clmm_pool::pool_tests {
         
         scenario.next_tx(admin);
         {
-            let mut pools = scenario.take_shared<Pools>();
             let global_config = scenario.take_shared<config::GlobalConfig>();
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             let clock = clock::create_for_testing(scenario.ctx());
             
             // Create a new pool with current_sqrt_price = 1.0
@@ -1287,6 +1304,7 @@ module clmm_pool::pool_tests {
             // Add liquidity to the position
             let receipt = pool::add_liquidity<TestCoinB, TestCoinA>(
                 &global_config,
+                &mut vault,
                 &mut pool,
                 &mut position,
                 1000,  // delta_liquidity
@@ -1310,8 +1328,8 @@ module clmm_pool::pool_tests {
             // Return objects to scenario
             transfer::public_transfer(pool, admin);
             transfer::public_transfer(position, admin);
-            test_scenario::return_shared(pools);
             test_scenario::return_shared(global_config);
+            test_scenario::return_shared(vault);
             clock::destroy_for_testing(clock);
         };
         
@@ -1327,6 +1345,7 @@ module clmm_pool::pool_tests {
         {
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
         };
         
         // Add fee tier
@@ -1341,8 +1360,8 @@ module clmm_pool::pool_tests {
         
         scenario.next_tx(admin);
         {
-            let mut pools = scenario.take_shared<Pools>();
             let global_config = scenario.take_shared<config::GlobalConfig>();
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             let clock = clock::create_for_testing(scenario.ctx());
             
             // Create a new pool with current_sqrt_price = 1.0025 (corresponds to tick = 25)
@@ -1371,6 +1390,7 @@ module clmm_pool::pool_tests {
             // Add liquidity to the position
             let receipt = pool::add_liquidity<TestCoinB, TestCoinA>(
                 &global_config,
+                &mut vault,
                 &mut pool,
                 &mut position,
                 10000000,  // delta_liquidity
@@ -1397,8 +1417,8 @@ module clmm_pool::pool_tests {
             // Return objects to scenario
             transfer::public_transfer(pool, admin);
             transfer::public_transfer(position, admin);
-            test_scenario::return_shared(pools);
             test_scenario::return_shared(global_config);
+            test_scenario::return_shared(vault);
             clock::destroy_for_testing(clock);
         };
         
@@ -1414,6 +1434,7 @@ module clmm_pool::pool_tests {
         {
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
         };
         
         // Add fee tier
@@ -1428,8 +1449,8 @@ module clmm_pool::pool_tests {
         
         scenario.next_tx(admin);
         {
-            let mut pools = scenario.take_shared<Pools>();
             let global_config = scenario.take_shared<config::GlobalConfig>();
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             let clock = clock::create_for_testing(scenario.ctx());
             
             // Create a new pool with current_sqrt_price = 1.0025 (corresponds to tick = 25)
@@ -1458,6 +1479,7 @@ module clmm_pool::pool_tests {
             // Add liquidity to the position
             let receipt = pool::add_liquidity<TestCoinB, TestCoinA>(
                 &global_config,
+                &mut vault,
                 &mut pool,
                 &mut position,
                 10000000,  // delta_liquidity
@@ -1502,7 +1524,7 @@ module clmm_pool::pool_tests {
             );
 
             // Verify the result
-            let (amount_in, amount_out, fee_amount, protocol_fee, ref_fee, gauge_fee, steps) = pool::get_swap_result_test(&swap_result);
+            let (amount_in, amount_out, fee_amount, protocol_fee, _, _, _) = pool::get_swap_result_test(&swap_result);
             assert!(amount_in == 20, 5);
             assert!(amount_out == 18, 6);
             assert!(fee_amount == 2, 7);
@@ -1513,8 +1535,8 @@ module clmm_pool::pool_tests {
             // Return objects to scenario
             transfer::public_transfer(pool, admin);
             transfer::public_transfer(position, admin);
-            test_scenario::return_shared(pools);
             test_scenario::return_shared(global_config);
+            test_scenario::return_shared(vault);
             clock::destroy_for_testing(clock);
         };
         
@@ -1530,6 +1552,7 @@ module clmm_pool::pool_tests {
         {
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
         };
         
         // Add fee tier
@@ -1544,8 +1567,8 @@ module clmm_pool::pool_tests {
         
         scenario.next_tx(admin);
         {
-            let mut pools = scenario.take_shared<Pools>();
             let global_config = scenario.take_shared<config::GlobalConfig>();
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             let clock = clock::create_for_testing(scenario.ctx());
             
             // Create a new pool with current_sqrt_price = 1.0025 (corresponds to tick = 25)
@@ -1574,6 +1597,7 @@ module clmm_pool::pool_tests {
             // Add liquidity to the position
             let receipt = pool::add_liquidity<TestCoinB, TestCoinA>(
                 &global_config,
+                &mut vault,
                 &mut pool,
                 &mut position,
                 10000000,  // delta_liquidity
@@ -1596,7 +1620,7 @@ module clmm_pool::pool_tests {
             );
 
             // Verify the result
-            let (amount_in, amount_out, fee_amount, protocol_fee, ref_fee, gauge_fee, steps) = pool::get_swap_result_test(&swap_result);
+            let (amount_in, amount_out, fee_amount, protocol_fee, ref_fee, _, _) = pool::get_swap_result_test(&swap_result);
             assert!(amount_in == 100, 1);
             assert!(amount_out == 90, 2);
             assert!(fee_amount == 8, 3);
@@ -1608,8 +1632,8 @@ module clmm_pool::pool_tests {
             // Return objects to scenario
             transfer::public_transfer(pool, admin);
             transfer::public_transfer(position, admin);
-            test_scenario::return_shared(pools);
             test_scenario::return_shared(global_config);
+            test_scenario::return_shared(vault);
             clock::destroy_for_testing(clock);
         };
         
@@ -1683,6 +1707,7 @@ module clmm_pool::pool_tests {
         {
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
         };
         
         // Add fee tier
@@ -1697,8 +1722,8 @@ module clmm_pool::pool_tests {
         
         scenario.next_tx(admin);
         {
-            let mut pools = scenario.take_shared<Pools>();
             let global_config = scenario.take_shared<config::GlobalConfig>();
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             let clock = clock::create_for_testing(scenario.ctx());
             
             // Create a new pool with current_sqrt_price = 1.0
@@ -1727,6 +1752,7 @@ module clmm_pool::pool_tests {
             // Add liquidity to the position
             let receipt = pool::add_liquidity<TestCoinB, TestCoinA>(
                 &global_config,
+                &mut vault,
                 &mut pool,
                 &mut position,
                 1000,  // delta_liquidity
@@ -1755,7 +1781,7 @@ module clmm_pool::pool_tests {
             );
 
             // Verify the result
-            let (amount_in, amount_out, fee_amount, protocol_fee, ref_fee, gauge_fee, steps) = pool::get_swap_result_test(&swap_result);
+            let (amount_in, amount_out, fee_amount, protocol_fee, _, _, _) = pool::get_swap_result_test(&swap_result);
             assert!(amount_in == 1000000, 1);
             assert!(amount_out == 900000, 2);
             assert!(fee_amount == 100000, 3);
@@ -1766,8 +1792,8 @@ module clmm_pool::pool_tests {
             // Return objects to scenario
             transfer::public_transfer(pool, admin);
             transfer::public_transfer(position, admin);
-            test_scenario::return_shared(pools);
             test_scenario::return_shared(global_config);
+            test_scenario::return_shared(vault);
             clock::destroy_for_testing(clock);
         };
         
@@ -1783,6 +1809,7 @@ module clmm_pool::pool_tests {
         {
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
         };
         
         // Add fee tier
@@ -1797,8 +1824,8 @@ module clmm_pool::pool_tests {
         
         scenario.next_tx(admin);
         {
-            let mut pools = scenario.take_shared<Pools>();
             let global_config = scenario.take_shared<config::GlobalConfig>();
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             let clock = clock::create_for_testing(scenario.ctx());
             
             // Create a new pool with current_sqrt_price = 1.0025 (corresponds to tick = 25)
@@ -1827,6 +1854,7 @@ module clmm_pool::pool_tests {
             // Add liquidity to the position
             let receipt = pool::add_liquidity<TestCoinB, TestCoinA>(
                 &global_config,
+                &mut vault,
                 &mut pool,
                 &mut position,
                 10000000,  // delta_liquidity
@@ -1847,7 +1875,7 @@ module clmm_pool::pool_tests {
             );
 
             // Verify the result
-            let (amount_in, amount_out, fee_amount, protocol_fee, ref_fee, gauge_fee, steps) = pool::get_swap_result_test(&result);
+            let (amount_in, amount_out, fee_amount, _, _, _, _) = pool::get_swap_result_test(&result);
             assert!(amount_in <= 10, 1);
             assert!(amount_out > 0, 2);
             assert!(fee_amount > 0, 3);
@@ -1857,8 +1885,8 @@ module clmm_pool::pool_tests {
             // Return objects to scenario
             transfer::public_transfer(pool, admin);
             transfer::public_transfer(position, admin);
-            test_scenario::return_shared(pools);
             test_scenario::return_shared(global_config);
+            test_scenario::return_shared(vault);
             clock::destroy_for_testing(clock);
         };
         
@@ -1874,6 +1902,7 @@ module clmm_pool::pool_tests {
         {
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
         };
         
         // Add fee tier
@@ -1888,8 +1917,8 @@ module clmm_pool::pool_tests {
         
         scenario.next_tx(admin);
         {
-            let mut pools = scenario.take_shared<Pools>();
             let global_config = scenario.take_shared<config::GlobalConfig>();
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             let clock = clock::create_for_testing(scenario.ctx());
             
             // Create a new pool with current_sqrt_price = 1.0025 (corresponds to tick = 25)
@@ -1918,6 +1947,7 @@ module clmm_pool::pool_tests {
             // Add liquidity to the position
             let receipt = pool::add_liquidity<TestCoinB, TestCoinA>(
                 &global_config,
+                &mut vault,
                 &mut pool,
                 &mut position,
                 10000000,  // delta_liquidity
@@ -1938,7 +1968,7 @@ module clmm_pool::pool_tests {
             );
 
             // Verify the result
-            let (amount_in, amount_out, fee_amount, protocol_fee, ref_fee, gauge_fee, steps) = pool::get_swap_result_test(&result);
+            let (amount_in, amount_out, fee_amount, _, _, _, _) = pool::get_swap_result_test(&result);
             assert!(amount_in > 0, 1);
             assert!(amount_out <= 10, 2);
             assert!(fee_amount > 0, 3);
@@ -1948,8 +1978,8 @@ module clmm_pool::pool_tests {
             // Return objects to scenario
             transfer::public_transfer(pool, admin);
             transfer::public_transfer(position, admin);
-            test_scenario::return_shared(pools);
             test_scenario::return_shared(global_config);
+            test_scenario::return_shared(vault);
             clock::destroy_for_testing(clock);
         };
         
@@ -1965,6 +1995,7 @@ module clmm_pool::pool_tests {
         {
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
         };
         
         // Add fee tier
@@ -1979,8 +2010,8 @@ module clmm_pool::pool_tests {
         
         scenario.next_tx(admin);
         {
-            let mut pools = scenario.take_shared<Pools>();
             let global_config = scenario.take_shared<config::GlobalConfig>();
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             let clock = clock::create_for_testing(scenario.ctx());
             
             // Create a new pool with current_sqrt_price = 1.0025 (corresponds to tick = 25)
@@ -2009,6 +2040,7 @@ module clmm_pool::pool_tests {
             // Add liquidity to the position
             let receipt = pool::add_liquidity<TestCoinB, TestCoinA>(
                 &global_config,
+                &mut vault,
                 &mut pool,
                 &mut position,
                 10000000,  // delta_liquidity
@@ -2029,7 +2061,7 @@ module clmm_pool::pool_tests {
             );
 
             // Verify the result
-            let (amount_in, amount_out, fee_amount, protocol_fee, ref_fee, gauge_fee, steps) = pool::get_swap_result_test(&result);
+            let (amount_in, amount_out, fee_amount, _, ref_fee, _, _) = pool::get_swap_result_test(&result);
             assert!(amount_in <= 100, 1);
             assert!(amount_out > 0, 2);
             assert!(fee_amount > 0, 3);
@@ -2040,8 +2072,8 @@ module clmm_pool::pool_tests {
             // Return objects to scenario
             transfer::public_transfer(pool, admin);
             transfer::public_transfer(position, admin);
-            test_scenario::return_shared(pools);
             test_scenario::return_shared(global_config);
+            test_scenario::return_shared(vault);
             clock::destroy_for_testing(clock);
         };
         
@@ -2057,6 +2089,7 @@ module clmm_pool::pool_tests {
         {
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
             stats::init_test(scenario.ctx());
             price_provider::init_test(scenario.ctx());
             partner::test_init(scenario.ctx());
@@ -2075,11 +2108,9 @@ module clmm_pool::pool_tests {
         
         scenario.next_tx(admin);
         {
-            let mut pools = scenario.take_shared<Pools>();
             let global_config = scenario.take_shared<config::GlobalConfig>();
-            let mut stats = scenario.take_shared<stats::Stats>();
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             let price_provider = scenario.take_shared<price_provider::PriceProvider>();
-            let mut partners = scenario.take_shared<partner::Partners>();
             let clock = clock::create_for_testing(scenario.ctx());
             
             // Create a pool with different initial price
@@ -2108,6 +2139,7 @@ module clmm_pool::pool_tests {
             // Add liquidity to the position
             let addLiquidityReceipt = pool::add_liquidity<TestCoinB, TestCoinA>(
                 &global_config,
+                &mut vault,
                 &mut pool,
                 &mut position,
                 1000000000000000,
@@ -2138,6 +2170,7 @@ module clmm_pool::pool_tests {
 
             let addLiquidityReceipt2 = pool::add_liquidity<TestCoinB, TestCoinA>(
                 &global_config,
+                &mut vault,
                 &mut pool,
                 &mut position2,
                 100000000000000000,
@@ -2172,11 +2205,9 @@ module clmm_pool::pool_tests {
             transfer::public_transfer(pool, admin);
             transfer::public_transfer(position, admin);
             transfer::public_transfer(position2, admin);
-            test_scenario::return_shared(pools);
             test_scenario::return_shared(global_config);
-            test_scenario::return_shared(stats);
             test_scenario::return_shared(price_provider);
-            test_scenario::return_shared(partners);
+            test_scenario::return_shared(vault);
             clock::destroy_for_testing(clock);
         };
 
@@ -2184,6 +2215,7 @@ module clmm_pool::pool_tests {
         {
             let global_config = scenario.take_shared<config::GlobalConfig>();
             let mut stats = scenario.take_shared<stats::Stats>();
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             let price_provider = scenario.take_shared<price_provider::PriceProvider>();
             let clock = clock::create_for_testing(scenario.ctx());
             let mut pool = scenario.take_from_sender<pool::Pool<TestCoinB, TestCoinA>>();
@@ -2191,12 +2223,10 @@ module clmm_pool::pool_tests {
             // Get current sqrt price before borrowing pool
             let current_sqrt_price = pool::current_sqrt_price(&pool);
 
-            // Print current tick
-            let current_tick = pool::current_tick_index(&pool);
-
             // Perform flash swap with first partner
             let (balance_a, balance_b, receipt) = pool::flash_swap<TestCoinB, TestCoinA>(
                 &global_config,
+                &mut vault,
                 &mut pool,
                 false,  // a2b
                 true,  // by_amount_in
@@ -2207,7 +2237,7 @@ module clmm_pool::pool_tests {
                 &clock
             );
 
-            let mut coin_a_repay = sui::coin::mint_for_testing<TestCoinB>(0, scenario.ctx());
+            let coin_a_repay = sui::coin::mint_for_testing<TestCoinB>(0, scenario.ctx());
             let balance_a_repay = coin_a_repay.into_balance();
             let mut coin_b_repay = sui::coin::mint_for_testing<TestCoinA>(54808, scenario.ctx());
             let balance_b_repay = coin_b_repay.split(receipt.swap_pay_amount(), scenario.ctx()).into_balance();
@@ -2229,6 +2259,7 @@ module clmm_pool::pool_tests {
             test_scenario::return_shared(global_config);
             test_scenario::return_shared(stats);
             test_scenario::return_shared(price_provider);
+            test_scenario::return_shared(vault);
             clock::destroy_for_testing(clock);
         };
         
@@ -2245,6 +2276,7 @@ module clmm_pool::pool_tests {
         {
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
             stats::init_test(scenario.ctx());
             price_provider::init_test(scenario.ctx());
             partner::test_init(scenario.ctx());
@@ -2265,6 +2297,7 @@ module clmm_pool::pool_tests {
             let mut pools = scenario.take_shared<Pools>();
             let global_config = scenario.take_shared<config::GlobalConfig>();
             let mut stats = scenario.take_shared<stats::Stats>();
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             let price_provider = scenario.take_shared<price_provider::PriceProvider>();
             let mut partners = scenario.take_shared<partner::Partners>();
             let clock = clock::create_for_testing(scenario.ctx());
@@ -2323,6 +2356,7 @@ module clmm_pool::pool_tests {
             let (balance_a, balance_b, receipt) = pool::flash_swap_internal_test<TestCoinB, TestCoinA>(
                 &mut pool1,
                 &global_config,
+                &mut vault,
                 partner_id,
                 100,
                 true,
@@ -2353,6 +2387,7 @@ module clmm_pool::pool_tests {
             test_scenario::return_shared(price_provider);
             test_scenario::return_shared(partners);
             test_scenario::return_shared(partner);
+            test_scenario::return_shared(vault);
             clock::destroy_for_testing(clock);
         };
         
@@ -2369,6 +2404,7 @@ module clmm_pool::pool_tests {
         {
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
             stats::init_test(scenario.ctx());
             price_provider::init_test(scenario.ctx());
             partner::test_init(scenario.ctx());
@@ -2436,7 +2472,7 @@ module clmm_pool::pool_tests {
             let price_provider = scenario.take_shared<price_provider::PriceProvider>();
             let mut partners = scenario.take_shared<partner::Partners>();
             let clock = clock::create_for_testing(scenario.ctx());
-            
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             // Create a pool
             let mut pool = pool::new<TestCoinB, TestCoinA>(
                 1, // tick_spacing
@@ -2481,6 +2517,7 @@ module clmm_pool::pool_tests {
             // Add liquidity to the position
             let receipt = pool::add_liquidity_fix_coin<TestCoinB, TestCoinA>(
                 &global_config,
+                &mut vault,
                 &mut pool,
                 &mut position,
                 100000000000000,
@@ -2509,6 +2546,7 @@ module clmm_pool::pool_tests {
             test_scenario::return_shared(stats);
             test_scenario::return_shared(price_provider);
             test_scenario::return_shared(partners);
+            test_scenario::return_shared(vault);
             clock::destroy_for_testing(clock);
         };
 
@@ -2520,6 +2558,7 @@ module clmm_pool::pool_tests {
             let price_provider = scenario.take_shared<price_provider::PriceProvider>();
             let mut partners = scenario.take_shared<partner::Partners>();
             let clock = clock::create_for_testing(scenario.ctx());
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             let mut pool = scenario.take_from_sender<pool::Pool<TestCoinB, TestCoinA>>();
             // Get partners from scenario
             let partner1 = scenario.take_shared<partner::Partner>();
@@ -2535,6 +2574,7 @@ module clmm_pool::pool_tests {
             // Perform flash swap with first partner
             let (balance_a, balance_b, receipt) = pool::flash_swap_with_partner<TestCoinB, TestCoinA>(
                 &global_config,
+                &mut vault,
                 &mut pool,
                 &partner1,
                 true,  // a2b
@@ -2567,6 +2607,7 @@ module clmm_pool::pool_tests {
             test_scenario::return_shared(partners);
             test_scenario::return_shared(partner1);
             test_scenario::return_shared(partner2);
+            test_scenario::return_shared(vault);
             clock::destroy_for_testing(clock);
         };
         
@@ -2586,6 +2627,7 @@ module clmm_pool::pool_tests {
             stats::init_test(scenario.ctx());
             price_provider::init_test(scenario.ctx());
             partner::test_init(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
         };
         
         // Add fee tier
@@ -2606,7 +2648,7 @@ module clmm_pool::pool_tests {
             let price_provider = scenario.take_shared<price_provider::PriceProvider>();
             let mut partners = scenario.take_shared<partner::Partners>();
             let clock = clock::create_for_testing(scenario.ctx());
-            
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             // Create a pool
             let mut pool = pool::new<TestCoinB, TestCoinA>(
                 1, // tick_spacing
@@ -2651,6 +2693,7 @@ module clmm_pool::pool_tests {
             // Add liquidity to the position
             let receipt = pool::add_liquidity_fix_coin<TestCoinB, TestCoinA>(
                 &global_config,
+                &mut vault,
                 &mut pool,
                 &mut position,
                 100000000000000,
@@ -2679,6 +2722,7 @@ module clmm_pool::pool_tests {
             test_scenario::return_shared(stats);
             test_scenario::return_shared(price_provider);
             test_scenario::return_shared(partners);
+            test_scenario::return_shared(vault);
             clock::destroy_for_testing(clock);
         };
 
@@ -2688,6 +2732,7 @@ module clmm_pool::pool_tests {
             let mut stats = scenario.take_shared<stats::Stats>();
             let price_provider = scenario.take_shared<price_provider::PriceProvider>();
             let clock = clock::create_for_testing(scenario.ctx());
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             let mut pool = scenario.take_from_sender<pool::Pool<TestCoinB, TestCoinA>>();
             // Get partner from scenario
             let mut partner = scenario.take_shared<partner::Partner>();
@@ -2697,6 +2742,7 @@ module clmm_pool::pool_tests {
             let (balance_a, balance_b, receipt) = pool::flash_swap_internal_test<TestCoinB, TestCoinA>(
                 &mut pool,
                 &global_config,
+                &mut vault,
                 partner_id,
                 100,
                 true,
@@ -2713,9 +2759,7 @@ module clmm_pool::pool_tests {
 
             // Try to repay flash swap in paused pool (should fail)
             test_scenario::next_tx(&mut scenario, @0x2);
-            let user = test_scenario::ctx(&mut scenario);
             test_scenario::next_tx(&mut scenario, @0x1);
-            let admin = test_scenario::ctx(&mut scenario);
 
             pool::repay_flash_swap_with_partner<TestCoinB, TestCoinA>(
                 &global_config,
@@ -2732,6 +2776,7 @@ module clmm_pool::pool_tests {
             test_scenario::return_shared(stats);
             test_scenario::return_shared(price_provider);
             test_scenario::return_shared(partner);
+            test_scenario::return_shared(vault);
             clock::destroy_for_testing(clock);
         };
         
@@ -2747,6 +2792,7 @@ module clmm_pool::pool_tests {
         {
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
         };
         
         // Add fee tier
@@ -2763,7 +2809,7 @@ module clmm_pool::pool_tests {
         {
             let global_config = scenario.take_shared<config::GlobalConfig>();
             let clock = clock::create_for_testing(scenario.ctx());
-            
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             // Create a new pool
             let mut pool = pool::new<TestCoinB, TestCoinA>(
                 1, // tick_spacing
@@ -2790,6 +2836,7 @@ module clmm_pool::pool_tests {
             // Add liquidity to the position
             let receipt = pool::add_liquidity<TestCoinB, TestCoinA>(
                 &global_config,
+                &mut vault,
                 &mut pool,
                 &mut position,
                 1000000,  
@@ -2817,6 +2864,7 @@ module clmm_pool::pool_tests {
             // Remove half of the liquidity
             let (balance_a_remove, balance_b_remove) = pool::remove_liquidity<TestCoinB, TestCoinA>(
                 &global_config,
+                &mut vault,
                 &mut pool,
                 &mut position,
                 100000, 
@@ -2834,6 +2882,7 @@ module clmm_pool::pool_tests {
             transfer::public_transfer(pool, admin);
             transfer::public_transfer(position, admin);
             test_scenario::return_shared(global_config);
+            test_scenario::return_shared(vault);
             clock::destroy_for_testing(clock);
         };
         
@@ -2850,6 +2899,7 @@ module clmm_pool::pool_tests {
         {
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
         };
         
         // Add fee tier
@@ -2867,7 +2917,7 @@ module clmm_pool::pool_tests {
             let mut pools = scenario.take_shared<Pools>();
             let global_config = scenario.take_shared<config::GlobalConfig>();
             let clock = clock::create_for_testing(scenario.ctx());
-            
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             // Create a new pool
             let mut pool = pool::new<TestCoinB, TestCoinA>(
                 1, // tick_spacing
@@ -2893,7 +2943,8 @@ module clmm_pool::pool_tests {
 
             // Add liquidity to the position
             let receipt = pool::add_liquidity<TestCoinB, TestCoinA>(
-                &global_config,
+                &global_config, 
+                &mut vault,
                 &mut pool,
                 &mut position,
                 1000,  // delta_liquidity
@@ -2906,6 +2957,7 @@ module clmm_pool::pool_tests {
             // Try to remove liquidity from paused pool (should fail)
             let (balance_a, balance_b) = pool::remove_liquidity<TestCoinB, TestCoinA>(
                 &global_config,
+                &mut vault,
                 &mut pool,
                 &mut position,
                 500,  // remove half of liquidity
@@ -2920,6 +2972,7 @@ module clmm_pool::pool_tests {
             transfer::public_transfer(position, admin);
             test_scenario::return_shared(pools);
             test_scenario::return_shared(global_config);
+            test_scenario::return_shared(vault);
             clock::destroy_for_testing(clock);
         };
         
@@ -2936,6 +2989,7 @@ module clmm_pool::pool_tests {
         {
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
         };
         
         // Add fee tier
@@ -2953,7 +3007,7 @@ module clmm_pool::pool_tests {
             let mut pools = scenario.take_shared<Pools>();
             let global_config = scenario.take_shared<config::GlobalConfig>();
             let clock = clock::create_for_testing(scenario.ctx());
-            
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             // Create a new pool
             let mut pool = pool::new<TestCoinB, TestCoinA>(
                 1, // tick_spacing
@@ -2980,6 +3034,7 @@ module clmm_pool::pool_tests {
             // Add liquidity to the position
             let receipt = pool::add_liquidity<TestCoinB, TestCoinA>(
                 &global_config,
+                &mut vault,
                 &mut pool,
                 &mut position,
                 1000,  // delta_liquidity
@@ -2989,6 +3044,7 @@ module clmm_pool::pool_tests {
             // Try to remove zero liquidity (should fail)
             let (balance_a, balance_b) = pool::remove_liquidity<TestCoinB, TestCoinA>(
                 &global_config,
+                &mut vault,
                 &mut pool,
                 &mut position,
                 0,  // zero liquidity
@@ -3003,6 +3059,7 @@ module clmm_pool::pool_tests {
             transfer::public_transfer(position, admin);
             test_scenario::return_shared(pools);
             test_scenario::return_shared(global_config);
+            test_scenario::return_shared(vault);
             clock::destroy_for_testing(clock);
         };
         
@@ -3018,6 +3075,7 @@ module clmm_pool::pool_tests {
         {
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
         };
         
         // Add fee tier
@@ -3035,7 +3093,7 @@ module clmm_pool::pool_tests {
             let mut pools = scenario.take_shared<Pools>();
             let global_config = scenario.take_shared<config::GlobalConfig>();
             let clock = clock::create_for_testing(scenario.ctx());
-            
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             // Create a new pool
             let mut pool = pool::new<TestCoinB, TestCoinA>(
                 1, // tick_spacing
@@ -3062,6 +3120,7 @@ module clmm_pool::pool_tests {
             // Add liquidity to the position
             let receipt = pool::add_liquidity<TestCoinB, TestCoinA>(
                 &global_config,
+                &mut vault,
                 &mut pool,
                 &mut position,
                 100000,  // delta_liquidity
@@ -3088,6 +3147,7 @@ module clmm_pool::pool_tests {
             // Remove all liquidity
             let (balance_a_remove, balance_b_remove) = pool::remove_liquidity<TestCoinB, TestCoinA>(
                 &global_config,
+                &mut vault,
                 &mut pool,
                 &mut position,
                 100000,  // remove all liquidity
@@ -3108,6 +3168,7 @@ module clmm_pool::pool_tests {
             transfer::public_transfer(position, admin);
             test_scenario::return_shared(pools);
             test_scenario::return_shared(global_config);
+            test_scenario::return_shared(vault);
             clock::destroy_for_testing(clock);
         };
         
@@ -3125,6 +3186,7 @@ module clmm_pool::pool_tests {
             config::test_init(scenario.ctx());
             stats::init_test(scenario.ctx());
             price_provider::init_test(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
         };
         
         // Add fee tier
@@ -3145,7 +3207,7 @@ module clmm_pool::pool_tests {
             let mut stats = scenario.take_shared<stats::Stats>();
             let price_provider = scenario.take_shared<price_provider::PriceProvider>();
             let clock = clock::create_for_testing(scenario.ctx());
-            
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             // Create a new pool with current_sqrt_price = 1.0025 (corresponds to tick = 25)
             let mut pool = pool::new<TestCoinB, TestCoinA>(
                 1, // tick_spacing
@@ -3171,6 +3233,7 @@ module clmm_pool::pool_tests {
               // Add liquidity to the position
             let receipt = pool::add_liquidity<TestCoinB, TestCoinA>(
                 &global_config,
+                &mut vault,
                 &mut pool,
                 &mut position,
                 10000000000,  // delta_liquidity
@@ -3195,6 +3258,7 @@ module clmm_pool::pool_tests {
             let (balance_a, balance_b, swap_receipt) = pool::flash_swap_internal_test<TestCoinB, TestCoinA>(
                 &mut pool,
                 &global_config,
+                &mut vault,
                 sui::object::id_from_address(@0x4), // partner_id
                 0, // ref_fee_rate
                 true, // a2b - swap A->B
@@ -3225,6 +3289,7 @@ module clmm_pool::pool_tests {
             test_scenario::return_shared(global_config);
             test_scenario::return_shared(stats);
             test_scenario::return_shared(price_provider);
+            test_scenario::return_shared(vault);
             clock::destroy_for_testing(clock);
         };
         
@@ -3242,6 +3307,7 @@ module clmm_pool::pool_tests {
             config::test_init(scenario.ctx());
             stats::init_test(scenario.ctx());
             price_provider::init_test(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
         };
         
         // Add fee tier
@@ -3262,7 +3328,7 @@ module clmm_pool::pool_tests {
             let mut stats = scenario.take_shared<stats::Stats>();
             let price_provider = scenario.take_shared<price_provider::PriceProvider>();
             let clock = clock::create_for_testing(scenario.ctx());
-            
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             // Create a new pool with current_sqrt_price = 1.0 (changed from 1.0025)
             let mut pool = pool::new<TestCoinB, TestCoinA>(
                 1, // tick_spacing
@@ -3289,6 +3355,7 @@ module clmm_pool::pool_tests {
               // Add liquidity to the position
             let receipt = pool::add_liquidity<TestCoinB, TestCoinA>(
                 &global_config,
+                &mut vault,
                 &mut pool,
                 &mut position,
                 10000000000,  // delta_liquidity
@@ -3314,6 +3381,7 @@ module clmm_pool::pool_tests {
             let (balance_a, balance_b, swap_receipt) = pool::flash_swap_internal_test<TestCoinB, TestCoinA>(
                 &mut pool,
                 &global_config,
+                &mut vault,
                 sui::object::id_from_address(@0x0), // partner_id
                 0, // ref_fee_rate
                 false, // a2b (borrow coin B)
@@ -3344,6 +3412,7 @@ module clmm_pool::pool_tests {
             test_scenario::return_shared(global_config);
             test_scenario::return_shared(stats);
             test_scenario::return_shared(price_provider);
+            test_scenario::return_shared(vault);
             clock::destroy_for_testing(clock);
         };
         
@@ -3362,6 +3431,7 @@ module clmm_pool::pool_tests {
             config::test_init(scenario.ctx());
             stats::init_test(scenario.ctx());
             price_provider::init_test(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
         };
         
         // Add fee tier
@@ -3381,7 +3451,7 @@ module clmm_pool::pool_tests {
             let mut stats = scenario.take_shared<stats::Stats>();
             let price_provider = scenario.take_shared<price_provider::PriceProvider>();
             let clock = clock::create_for_testing(scenario.ctx());
-            
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             // Create a new pool with current_sqrt_price = 1.0025 (corresponds to tick = 25)
             let mut pool = pool::new<TestCoinB, TestCoinA>(
                 1, // tick_spacing
@@ -3408,6 +3478,7 @@ module clmm_pool::pool_tests {
             // Add liquidity to the position
             let receipt = pool::add_liquidity<TestCoinB, TestCoinA>(
                 &global_config,
+                &mut vault,
                 &mut pool,
                 &mut position,
                 100000,  // delta_liquidity
@@ -3432,6 +3503,7 @@ module clmm_pool::pool_tests {
             let (balance_a, balance_b, swap_receipt) = pool::flash_swap_internal_test<TestCoinB, TestCoinA>(
                 &mut pool,
                 &global_config,
+                &mut vault,
                 sui::object::id_from_address(@0x0), // partner_id
                 0, // ref_fee_rate
                 true, // a2b
@@ -3455,6 +3527,7 @@ module clmm_pool::pool_tests {
             test_scenario::return_shared(global_config);
             test_scenario::return_shared(stats);
             test_scenario::return_shared(price_provider);
+            test_scenario::return_shared(vault);
             clock::destroy_for_testing(clock);
         };
         
@@ -3809,7 +3882,6 @@ module clmm_pool::pool_tests {
         
         scenario.next_tx(admin);
         {
-            let mut pools = scenario.take_shared<Pools>();
             let global_config = scenario.take_shared<config::GlobalConfig>();
             let clock = clock::create_for_testing(scenario.ctx());
             
@@ -3848,7 +3920,6 @@ module clmm_pool::pool_tests {
             
             // Return objects to scenario
             transfer::public_transfer(pool, admin);
-            test_scenario::return_shared(pools);
             test_scenario::return_shared(global_config);
             clock::destroy_for_testing(clock);
         };
@@ -3866,6 +3937,7 @@ module clmm_pool::pool_tests {
         {
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
         };
         
         // Add fee tier
@@ -3880,10 +3952,9 @@ module clmm_pool::pool_tests {
         
         scenario.next_tx(admin);
         {
-            let mut pools = scenario.take_shared<Pools>();
             let global_config = scenario.take_shared<config::GlobalConfig>();
             let clock = clock::create_for_testing(scenario.ctx());
-
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             
             // Create a new pool
             let mut pool = pool::new<TestCoinB, TestCoinA>(
@@ -3913,6 +3984,7 @@ module clmm_pool::pool_tests {
             
             let receipt = pool::add_liquidity<TestCoinB, TestCoinA>(
                 &global_config,
+                &mut vault,
                 &mut pool,
                 &mut position,
                 liquidity_delta,  // delta_liquidity
@@ -3940,8 +4012,8 @@ module clmm_pool::pool_tests {
             
             // Return objects to scenario
             transfer::public_transfer(pool, admin);
-            test_scenario::return_shared(pools);
             test_scenario::return_shared(global_config);
+            test_scenario::return_shared(vault);
             clock::destroy_for_testing(clock);
         };
         
@@ -4075,7 +4147,7 @@ module clmm_pool::pool_tests {
             pool::update_emission<TestCoinB, TestCoinA, TestCoinA>(
                 &global_config,
                 &mut pool,
-                &rewarderGlobalVault,
+                &mut rewarderGlobalVault,
                 new_emission_rate,
                 &clock,
                 scenario.ctx()
@@ -4117,12 +4189,10 @@ module clmm_pool::pool_tests {
         
         scenario.next_tx(admin);
         {
-            let mut pools = scenario.take_shared<Pools>();
             let global_config = scenario.take_shared<config::GlobalConfig>();
             let clock = clock::create_for_testing(scenario.ctx());
-            let rewarderGlobalVault = scenario.take_shared<rewarder::RewarderGlobalVault>();
+            let mut rewarderGlobalVault = scenario.take_shared<rewarder::RewarderGlobalVault>();
 
-            
             // Create a new pool
             let mut pool = pool::new<TestCoinB, TestCoinA>(
                 1, // tick_spacing
@@ -4155,7 +4225,7 @@ module clmm_pool::pool_tests {
             pool::update_emission<TestCoinB, TestCoinA, TestCoinA>(
                 &global_config,
                 &mut pool,
-                &rewarderGlobalVault,
+                &mut rewarderGlobalVault,
                 1000,
                 &clock,
                 scenario.ctx()
@@ -4163,7 +4233,6 @@ module clmm_pool::pool_tests {
             
             // Return objects to scenario
             transfer::public_transfer(pool, admin);
-            test_scenario::return_shared(pools);
             test_scenario::return_shared(rewarderGlobalVault);
             test_scenario::return_shared(global_config);
             clock::destroy_for_testing(clock);
@@ -4198,10 +4267,9 @@ module clmm_pool::pool_tests {
         
         scenario.next_tx(admin);
         {
-            let mut pools = scenario.take_shared<Pools>();
             let global_config = scenario.take_shared<config::GlobalConfig>();
             let clock = clock::create_for_testing(scenario.ctx());
-            let rewarderGlobalVault = scenario.take_shared<rewarder::RewarderGlobalVault>();
+            let mut rewarderGlobalVault = scenario.take_shared<rewarder::RewarderGlobalVault>();
 
             
             // Create a new pool
@@ -4232,7 +4300,7 @@ module clmm_pool::pool_tests {
             pool::update_emission<TestCoinB, TestCoinA, TestCoinA>(
                 &global_config,
                 &mut pool,
-                &rewarderGlobalVault,
+                &mut rewarderGlobalVault,
                 1000,
                 &clock,
                 scenario.ctx()
@@ -4240,7 +4308,6 @@ module clmm_pool::pool_tests {
             
             // Return objects to scenario
             transfer::public_transfer(pool, admin);
-            test_scenario::return_shared(pools);
             test_scenario::return_shared(global_config);
             test_scenario::return_shared(rewarderGlobalVault);
             clock::destroy_for_testing(clock);
@@ -4260,6 +4327,7 @@ module clmm_pool::pool_tests {
             config::test_init(scenario.ctx());
             stats::init_test(scenario.ctx());
             price_provider::init_test(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
         };
         
         // Add fee tier
@@ -4279,7 +4347,7 @@ module clmm_pool::pool_tests {
             let clock = clock::create_for_testing(scenario.ctx());
             let mut stats = scenario.take_shared<stats::Stats>();
             let price_provider = scenario.take_shared<price_provider::PriceProvider>();
-            
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             // Create a new pool
             let mut pool = pool::new<TestCoinB, TestCoinA>(
                 1, // tick_spacing
@@ -4306,6 +4374,7 @@ module clmm_pool::pool_tests {
             // Add liquidity to the position
             let receipt = pool::add_liquidity<TestCoinB, TestCoinA>(
                 &global_config,
+                &mut vault,
                 &mut pool,
                 &mut position,
                 1000000000000,  // delta_liquidity
@@ -4329,6 +4398,7 @@ module clmm_pool::pool_tests {
             let (balance_a, balance_b, swap_receipt) = pool::flash_swap_internal_test<TestCoinB, TestCoinA>(
                 &mut pool,
                 &global_config,
+                &mut vault,
                 sui::object::id_from_address(@0x0), // partner_id
                 0, // ref_fee_rate
                 true, // a2b
@@ -4343,6 +4413,7 @@ module clmm_pool::pool_tests {
             let (balance2_a, balance2_b, swap_receipt2) = pool::flash_swap_internal_test<TestCoinB, TestCoinA>(
                 &mut pool,
                 &global_config,
+                &mut vault,
                 sui::object::id_from_address(@0x0), // partner_id
                 0, // ref_fee_rate
                 false, // a2b
@@ -4380,6 +4451,7 @@ module clmm_pool::pool_tests {
             test_scenario::return_shared(global_config);
             test_scenario::return_shared(stats);
             test_scenario::return_shared(price_provider);
+            test_scenario::return_shared(vault);
             clock::destroy_for_testing(clock);
         };
         
@@ -4396,6 +4468,7 @@ module clmm_pool::pool_tests {
         {
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
         };
         
         // Add fee tier
@@ -4413,7 +4486,7 @@ module clmm_pool::pool_tests {
             let mut pools = scenario.take_shared<Pools>();
             let global_config = scenario.take_shared<config::GlobalConfig>();
             let clock = clock::create_for_testing(scenario.ctx());
-            
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             // Create a new pool
             let mut pool = pool::new<TestCoinB, TestCoinA>(
                 1, // tick_spacing
@@ -4440,6 +4513,7 @@ module clmm_pool::pool_tests {
             // Add liquidity to the position
             let receipt = pool::add_liquidity<TestCoinB, TestCoinA>(
                 &global_config,
+                &mut vault,
                 &mut pool,
                 &mut position,
                 1000,  // delta_liquidity
@@ -4467,6 +4541,7 @@ module clmm_pool::pool_tests {
             transfer::public_transfer(position, admin);
             test_scenario::return_shared(pools);
             test_scenario::return_shared(global_config);
+            test_scenario::return_shared(vault);
             clock::destroy_for_testing(clock);
         };
         
@@ -4485,6 +4560,7 @@ module clmm_pool::pool_tests {
             stats::init_test(scenario.ctx());
             price_provider::init_test(scenario.ctx());
             gauge_cap::gauge_cap::init_test(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
         };
         
         // Add fee tier
@@ -4504,7 +4580,7 @@ module clmm_pool::pool_tests {
             let mut stats = scenario.take_shared<stats::Stats>();
             let price_provider = scenario.take_shared<price_provider::PriceProvider>();
             let create_gauge_cap = scenario.take_from_sender<gauge_cap::gauge_cap::CreateCap>();
-            
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             // Create a new pool
             let mut pool = pool::new<TestCoinB, TestCoinA>(
                 1, // tick_spacing
@@ -4542,6 +4618,7 @@ module clmm_pool::pool_tests {
             // Add liquidity to the position
             let receipt = pool::add_liquidity<TestCoinB, TestCoinA>(
                 &global_config,
+                &mut vault,
                 &mut pool,
                 &mut position,
                 100000000,  // delta_liquidity
@@ -4565,6 +4642,7 @@ module clmm_pool::pool_tests {
             let (balance_a, balance_b, swap_receipt) = pool::flash_swap_internal_test<TestCoinB, TestCoinA>(
                 &mut pool,
                 &global_config,
+                &mut vault,
                 sui::object::id_from_address(@0x0), // partner_id
                 0, // ref_fee_rate
                 true, // a2b
@@ -4579,6 +4657,7 @@ module clmm_pool::pool_tests {
             let (balance_a2, balance_b2, swap_receipt2) = pool::flash_swap_internal_test<TestCoinB, TestCoinA>(
                 &mut pool,
                 &global_config,
+                &mut vault,
                 sui::object::id_from_address(@0x0), // partner_id
                 0, // ref_fee_rate
                 false, // a2b
@@ -4650,6 +4729,7 @@ module clmm_pool::pool_tests {
             transfer::public_transfer(position, admin);
             test_scenario::return_shared(stats);
             test_scenario::return_shared(price_provider);
+            test_scenario::return_shared(vault);
             transfer::public_transfer(gauge_cap, admin);
             transfer::public_transfer(create_gauge_cap, admin);
             test_scenario::return_shared(global_config);
@@ -4671,6 +4751,7 @@ module clmm_pool::pool_tests {
             config::test_init(scenario.ctx());
             stats::init_test(scenario.ctx());
             price_provider::init_test(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
         };
         
         // Add fee tier
@@ -4687,7 +4768,7 @@ module clmm_pool::pool_tests {
         {
             let global_config = scenario.take_shared<config::GlobalConfig>();
             let clock = clock::create_for_testing(scenario.ctx());
-            
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             // Create a new pool
             let mut pool = pool::new<TestCoinB, TestCoinA>(
                 1, // tick_spacing
@@ -4714,6 +4795,7 @@ module clmm_pool::pool_tests {
             // Add liquidity to the position
             let receipt = pool::add_liquidity<TestCoinB, TestCoinA>(
                 &global_config,
+                &mut vault,
                 &mut pool,
                 &mut position,
                 1000,  // delta_liquidity
@@ -4740,6 +4822,7 @@ module clmm_pool::pool_tests {
             transfer::public_transfer(pool, admin);
             transfer::public_transfer(position, admin);
             test_scenario::return_shared(global_config);
+            test_scenario::return_shared(vault);
             clock::destroy_for_testing(clock);
         };
         
@@ -4758,6 +4841,7 @@ module clmm_pool::pool_tests {
             stats::init_test(scenario.ctx());
             price_provider::init_test(scenario.ctx());
             gauge_cap::gauge_cap::init_test(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
         };
         
         // Add fee tier
@@ -4778,7 +4862,7 @@ module clmm_pool::pool_tests {
             let create_gauge_cap = scenario.take_from_sender<gauge_cap::gauge_cap::CreateCap>();
             let stats = scenario.take_shared<stats::Stats>();
             let price_provider = scenario.take_shared<price_provider::PriceProvider>();
-            
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             // Create a new pool
             let mut pool = pool::new<TestCoinB, TestCoinA>(
                 1, // tick_spacing
@@ -4816,6 +4900,7 @@ module clmm_pool::pool_tests {
             // Add liquidity to the position
             let receipt = pool::add_liquidity<TestCoinB, TestCoinA>(
                 &global_config,
+                &mut vault,
                 &mut pool,
                 &mut position,
                 1000000000,  // delta_liquidity
@@ -4863,6 +4948,7 @@ module clmm_pool::pool_tests {
             test_scenario::return_shared(global_config);
             test_scenario::return_shared(stats);
             test_scenario::return_shared(price_provider);
+            test_scenario::return_shared(vault);
             clock::destroy_for_testing(clock);
         };
         
@@ -4969,6 +5055,7 @@ module clmm_pool::pool_tests {
             stats::init_test(scenario.ctx());
             price_provider::init_test(scenario.ctx());
             gauge_cap::gauge_cap::init_test(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
         };
         
         // Add fee tier
@@ -4989,7 +5076,7 @@ module clmm_pool::pool_tests {
             let create_gauge_cap = scenario.take_from_sender<gauge_cap::gauge_cap::CreateCap>();
             let stats = scenario.take_shared<stats::Stats>();
             let price_provider = scenario.take_shared<price_provider::PriceProvider>();
-            
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             // Create a new pool
             let mut pool = pool::new<TestCoinB, TestCoinA>(
                 1, // tick_spacing
@@ -5027,6 +5114,7 @@ module clmm_pool::pool_tests {
             // Add liquidity to the position
             let receipt = pool::add_liquidity<TestCoinB, TestCoinA>(
                 &global_config,
+                &mut vault,
                 &mut pool,
                 &mut position,
                 1000000000,  // delta_liquidity
@@ -5093,6 +5181,7 @@ module clmm_pool::pool_tests {
             test_scenario::return_shared(global_config);
             test_scenario::return_shared(stats);
             test_scenario::return_shared(price_provider);
+            test_scenario::return_shared(vault);
             clock::destroy_for_testing(clock);
         };
         
@@ -5112,6 +5201,7 @@ module clmm_pool::pool_tests {
             stats::init_test(scenario.ctx());
             price_provider::init_test(scenario.ctx());
             gauge_cap::gauge_cap::init_test(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
         };
         
         // Add fee tier
@@ -5132,7 +5222,7 @@ module clmm_pool::pool_tests {
             let create_gauge_cap = scenario.take_from_sender<gauge_cap::gauge_cap::CreateCap>();
             let stats = scenario.take_shared<stats::Stats>();
             let price_provider = scenario.take_shared<price_provider::PriceProvider>();
-            
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             // Create a new pool
             let mut pool = pool::new<TestCoinB, TestCoinA>(
                 1, // tick_spacing
@@ -5170,6 +5260,7 @@ module clmm_pool::pool_tests {
             // Add liquidity to the position
             let receipt = pool::add_liquidity<TestCoinB, TestCoinA>(
                 &global_config,
+                &mut vault,
                 &mut pool,
                 &mut position,
                 1000,  // delta_liquidity
@@ -5213,6 +5304,7 @@ module clmm_pool::pool_tests {
             test_scenario::return_shared(global_config);
             test_scenario::return_shared(stats);
             test_scenario::return_shared(price_provider);
+            test_scenario::return_shared(vault);
             clock::destroy_for_testing(clock);
         };
         
@@ -5811,6 +5903,7 @@ module clmm_pool::pool_tests {
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
             gauge_cap::gauge_cap::init_test(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
         };
         
         // Add fee tier
@@ -5829,7 +5922,7 @@ module clmm_pool::pool_tests {
             let global_config = test_scenario::take_shared<GlobalConfig>(&scenario);
             let mut clock = clock::create_for_testing(scenario.ctx());
             let create_gauge_cap = scenario.take_from_sender<gauge_cap::gauge_cap::CreateCap>();
-            
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             // Create a new pool
             let mut pool = pool::new<TestCoinB, TestCoinA>(
                 1, // tick_spacing
@@ -5866,6 +5959,7 @@ module clmm_pool::pool_tests {
             // Add liquidity to the position
             let receipt = pool::add_liquidity<TestCoinB, TestCoinA>(
                 &global_config,
+                &mut vault,
                 &mut pool,
                 &mut position,
                 1<<64,  // delta_liquidity
@@ -5891,6 +5985,7 @@ module clmm_pool::pool_tests {
             // Calculate and update points
             let points = pool::calculate_and_update_points<TestCoinB, TestCoinA>(
                 &global_config,
+                &mut vault,
                 &mut pool,
                 sui::object::id(&position),
                 &clock
@@ -5920,6 +6015,7 @@ module clmm_pool::pool_tests {
             transfer::public_transfer(gauge_cap, admin);
             transfer::public_transfer(create_gauge_cap, admin);
             test_scenario::return_shared(global_config);
+            test_scenario::return_shared(vault);
             clock::destroy_for_testing(clock);
         };
         
@@ -5938,6 +6034,7 @@ module clmm_pool::pool_tests {
             // Initialize factory and configuration
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
         };
 
         // Add fee tier
@@ -5954,7 +6051,7 @@ module clmm_pool::pool_tests {
         {
             let global_config = scenario.take_shared<config::GlobalConfig>();
             let clock = clock::create_for_testing(scenario.ctx());
-            
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             let mut pool = pool::new<TestCoinB, TestCoinA>(
                 1, // tick_spacing
                 18584142135623730951,
@@ -5974,6 +6071,7 @@ module clmm_pool::pool_tests {
             // Attempt to calculate and update points for non-existent position
             let _points = pool::calculate_and_update_points<TestCoinB, TestCoinA>(
                 &global_config,
+                &mut vault,
                 &mut pool,
                 fake_position_id,
                 &clock
@@ -5982,6 +6080,7 @@ module clmm_pool::pool_tests {
             // Transfer objects
             sui::transfer::public_transfer(pool, admin);
             sui::transfer::public_transfer(global_config, admin);
+            test_scenario::return_shared(vault);
             clock::destroy_for_testing(clock);
         };
         scenario.end();
@@ -5996,6 +6095,7 @@ module clmm_pool::pool_tests {
             // Initialize factory and configuration
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
         };
 
         // Add fee tier
@@ -6012,7 +6112,7 @@ module clmm_pool::pool_tests {
         {
             let global_config = scenario.take_shared<config::GlobalConfig>();
             let clock = clock::create_for_testing(scenario.ctx());
-            
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             let mut pool = pool::new<TestCoinB, TestCoinA>(
                 1, // tick_spacing
                 18584142135623730951,
@@ -6039,6 +6139,7 @@ module clmm_pool::pool_tests {
             // Attempt to calculate and update points for non-existent position
             let _points = pool::calculate_and_update_points<TestCoinB, TestCoinA>(
                 &global_config,
+                &mut vault,
                 &mut pool,
                 position_id,
                 &clock
@@ -6047,6 +6148,7 @@ module clmm_pool::pool_tests {
             // Transfer objects
             sui::transfer::public_transfer(pool, admin);
             sui::transfer::public_transfer(global_config, admin);
+            test_scenario::return_shared(vault);
             clock::destroy_for_testing(clock);
         };
         scenario.end();
@@ -6093,10 +6195,10 @@ module clmm_pool::pool_tests {
             let mut rewarderGlobalVault = scenario.take_shared<rewarder::RewarderGlobalVault>();
 
             // Add sufficient coins to vault
-            let balance = sui::coin::into_balance(sui::coin::mint_for_testing<TestCoinA>(10000000000, scenario.ctx()));
+            let balance = sui::coin::into_balance(sui::coin::mint_for_testing<TestCoinA>(7776000, scenario.ctx()));
             rewarder::deposit_reward(&global_config, &mut rewarderGlobalVault, balance);
 
-            let balance_b = sui::coin::into_balance(sui::coin::mint_for_testing<TestCoinB>(10000000000, scenario.ctx()));
+            let balance_b = sui::coin::into_balance(sui::coin::mint_for_testing<TestCoinB>(7776000, scenario.ctx()));
             rewarder::deposit_reward(&global_config, &mut rewarderGlobalVault, balance_b);
             
             // Create a new pool
@@ -6137,11 +6239,11 @@ module clmm_pool::pool_tests {
             );
 
             // Update emission rate
-            let new_emission_rate = 10000000000;
+            let new_emission_rate = 1660206966633859645440; // ==liquidity
             pool::update_emission<TestCoinB, TestCoinA, TestCoinA>(
                 &global_config,
                 &mut pool,
-                &rewarderGlobalVault,
+                &mut rewarderGlobalVault,
                 new_emission_rate,
                 &clock,
                 scenario.ctx()
@@ -6150,7 +6252,7 @@ module clmm_pool::pool_tests {
             pool::update_emission<TestCoinB, TestCoinA, TestCoinB>(
                 &global_config,
                 &mut pool,
-                &rewarderGlobalVault,
+                &mut rewarderGlobalVault,
                 new_emission_rate,
                 &clock,
                 scenario.ctx()
@@ -6168,6 +6270,7 @@ module clmm_pool::pool_tests {
             // Add liquidity to the position
             let receipt = pool::add_liquidity<TestCoinB, TestCoinA>(
                 &global_config,
+                &mut rewarderGlobalVault,
                 &mut pool,
                 &mut position,
                 90<<64, // delta_liquidity
@@ -6189,11 +6292,12 @@ module clmm_pool::pool_tests {
                 receipt
             );
 
-            clock::increment_for_testing(&mut clock, 3600000000000000);
+            clock::increment_for_testing(&mut clock, 10000); // 10 seconds
 
             let (balance_a, balance_b, swap_receipt) = pool::flash_swap_internal_test<TestCoinB, TestCoinA>(
                 &mut pool,
                 &global_config,
+                &mut rewarderGlobalVault,
                 sui::object::id_from_address(@0x0), // partner_id
                 0, // ref_fee_rate
                 true, // a2b
@@ -6232,65 +6336,83 @@ module clmm_pool::pool_tests {
 
 
             // Increment time to accumulate rewards
-            clock::increment_for_testing(&mut clock, 3600000000000000);
+            clock::increment_for_testing(&mut clock, 20000); // +10 seconds
 
             let rewardA = pool::calculate_and_update_reward<TestCoinB, TestCoinA, TestCoinA>(
                 &global_config,
+                &mut rewarderGlobalVault,
                 &mut pool,
                 sui::object::id(&position),
                 &clock
             );
-            assert!(&rewardA == 1890, 2);
+            assert!(&rewardA == 1800, 2); // 90 * 10 * 2
 
             let rewardB = pool::calculate_and_update_reward<TestCoinB, TestCoinA, TestCoinB>(
                 &global_config,
+                &mut rewarderGlobalVault,
                 &mut pool,
                 sui::object::id(&position),
                 &clock
             );
-            assert!(&rewardB == 1890, 3);
-            // Calculate and update rewards
-            let rewards = pool::calculate_and_update_rewards<TestCoinB, TestCoinA>(
-                &global_config,
-                &mut pool,
-                sui::object::id(&position),
-                &clock
-            );
-            // Verify rewards were calculated and updated
-            assert!(vector::length(&rewards) == 2, 1);
-            assert!(&rewards[0] == 1890, 2);
-            assert!(&rewards[1] == 1890, 3);
+            assert!(&rewardB == 1800, 3); // 90 * 10 * 2
 
             let rewardA = pool::get_position_reward<TestCoinB, TestCoinA, TestCoinA>(
                 &pool,
                 sui::object::id(&position)
             );
-            assert!(rewardA == 1890, 2);
+            assert!(rewardA == 1800, 2);
 
-            let rewardB = pool::get_position_reward<TestCoinB, TestCoinA, TestCoinB>(
-                &pool,
-                sui::object::id(&position)
-            );
-            assert!(rewardB == 1890, 3);
-            
             let rewards_in_tick_range = pool::get_rewards_in_tick_range<TestCoinB, TestCoinA>(
                 &pool,
                 integer_mate::i32::from(100),
                 integer_mate::i32::from(200)
             );
             assert!(vector::length(&rewards_in_tick_range) == 2, 1);
-            assert!(&rewards_in_tick_range[0] == 21, 2);
-            assert!(&rewards_in_tick_range[1] == 21, 3);
+            assert!(&rewards_in_tick_range[0] == 20, 2);
+            assert!(&rewards_in_tick_range[1] == 20, 3);
+
+            // initial emission rate is 90
+            let emissions_per_second_a = pool::rewarder_manager<TestCoinB, TestCoinA>(&pool).borrow_rewarder<TestCoinA>().emissions_per_second();
+            assert!(emissions_per_second_a>>64 == 90, 9235823842);
+            let emissions_per_second_b = pool::rewarder_manager<TestCoinB, TestCoinA>(&pool).borrow_rewarder<TestCoinB>().emissions_per_second();
+            assert!(emissions_per_second_b>>64 == 90, 9235823842);
+
+            clock::increment_for_testing(&mut clock, 86420000); // +86400 seconds
+
+            // Calculate and update rewards
+            let rewards = pool::calculate_and_update_rewards<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut rewarderGlobalVault,
+                &mut pool,
+                sui::object::id(&position),
+                &clock
+            );
+
+            // Verify rewards were calculated and updated
+            assert!(vector::length(&rewards) == 2, 1);
+            assert!(&rewards[0] == 7776000, 2);
+            assert!(&rewards[1] == 7776000, 3);
+
+            // reset emission rate to 0 when there is no available balance
+            let emissions_per_second_a = pool::rewarder_manager<TestCoinB, TestCoinA>(&pool).borrow_rewarder<TestCoinA>().emissions_per_second();
+            assert!(emissions_per_second_a>>64 == 0, 9235823842);
+            let emissions_per_second_b = pool::rewarder_manager<TestCoinB, TestCoinA>(&pool).borrow_rewarder<TestCoinB>().emissions_per_second();
+            assert!(emissions_per_second_b>>64 == 0, 9235823842);
+
+            let rewardB = pool::get_position_reward<TestCoinB, TestCoinA, TestCoinB>(
+                &pool,
+                sui::object::id(&position)
+            );
+            assert!(rewardB == 7776000, 3);
             
             let (_, _, reward_growth, _, _) = pool::get_all_growths_in_tick_range(
                 &pool,
                 integer_mate::i32::from(100),
                 integer_mate::i32::from(200)
             );
-
             assert!(vector::length(&reward_growth) == 2, 1);
-            assert!(&reward_growth[0] == 21, 2);
-            assert!(&reward_growth[1] == 21, 3);
+            assert!(&reward_growth[0] == 86400, 2);
+            assert!(&reward_growth[1] == 86400, 3);
 
             let rewardBalanceA = pool::collect_reward<TestCoinB, TestCoinA, TestCoinA>(
                 &global_config,
@@ -6300,7 +6422,7 @@ module clmm_pool::pool_tests {
                 true,
                 &clock
             );
-            assert!(sui::balance::value(&rewardBalanceA) == 1890, 1);
+            assert!(sui::balance::value(&rewardBalanceA) == 7776000, 1);
 
             let rewardBalanceB = pool::collect_reward<TestCoinB, TestCoinA, TestCoinB>(
                 &global_config,
@@ -6310,7 +6432,7 @@ module clmm_pool::pool_tests {
                 true,
                 &clock
             );
-            assert!(sui::balance::value(&rewardBalanceB) == 1890, 1);
+            assert!(sui::balance::value(&rewardBalanceB) == 7776000, 1);
             
             // Cleanup
             sui::coin::from_balance(rewardBalanceA, scenario.ctx()).burn_for_testing();
@@ -6343,6 +6465,7 @@ module clmm_pool::pool_tests {
             config::test_init(scenario.ctx());
             stats::init_test(scenario.ctx());
             price_provider::init_test(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
         };
         
         // Add fee tier
@@ -6361,7 +6484,7 @@ module clmm_pool::pool_tests {
             let clock = clock::create_for_testing(scenario.ctx());
             let mut stats = scenario.take_shared<stats::Stats>();
             let price_provider = scenario.take_shared<price_provider::PriceProvider>();
-            
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             // Create a new pool
             let mut pool = pool::new<TestCoinB, TestCoinA>(
                 1, // tick_spacing
@@ -6388,6 +6511,7 @@ module clmm_pool::pool_tests {
             // Add liquidity to the position
             let receipt = pool::add_liquidity<TestCoinB, TestCoinA>(
                 &global_config,
+                &mut vault,
                 &mut pool,
                 &mut position,
                 90<<64, // delta_liquidity
@@ -6411,6 +6535,7 @@ module clmm_pool::pool_tests {
 
             let (balance_a, balance_b, receipt) = pool::flash_swap<TestCoinB, TestCoinA>(
                 &global_config,
+                &mut vault,
                 &mut pool,
                 false,  // a2b
                 true,  // by_amount_in
@@ -6423,6 +6548,7 @@ module clmm_pool::pool_tests {
 
             let (balance_a2, balance_b2, receipt2) = pool::flash_swap<TestCoinB, TestCoinA>(
                 &global_config,
+                &mut vault,
                 &mut pool,
                 true,  // a2b
                 true,  // by_amount_in
@@ -6459,6 +6585,7 @@ module clmm_pool::pool_tests {
             test_scenario::return_shared(global_config);
             test_scenario::return_shared(stats);
             test_scenario::return_shared(price_provider);
+            test_scenario::return_shared(vault);
             clock::destroy_for_testing(clock);
         };
         
@@ -6481,6 +6608,7 @@ module clmm_pool::pool_tests {
             gauge_cap::gauge_cap::init_test(scenario.ctx());
             stats::init_test(scenario.ctx());
             price_provider::init_test(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
         };
         
         // Add fee tier
@@ -6499,7 +6627,7 @@ module clmm_pool::pool_tests {
             let global_config = test_scenario::take_shared<config::GlobalConfig>(&scenario);
             let clock = clock::create_for_testing(scenario.ctx());
             let create_gauge_cap = scenario.take_from_sender<gauge_cap::gauge_cap::CreateCap>();
-            
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             // Create a new pool
             let mut pool = pool::new<TestCoinB, TestCoinA>(
                 1, // tick_spacing
@@ -6537,6 +6665,7 @@ module clmm_pool::pool_tests {
             // Add liquidity to the position
             let receipt = pool::add_liquidity<TestCoinB, TestCoinA>(
                 &global_config,
+                &mut vault,
                 &mut pool,
                 &mut position,
                 1000000, // delta_liquidity
@@ -6589,6 +6718,7 @@ module clmm_pool::pool_tests {
             transfer::public_transfer(gauge_cap, admin);
             transfer::public_transfer(create_gauge_cap, admin);
             test_scenario::return_shared(global_config);
+            test_scenario::return_shared(vault);
             clock::destroy_for_testing(clock);
         };
         
@@ -6612,6 +6742,7 @@ module clmm_pool::pool_tests {
             gauge_cap::gauge_cap::init_test(scenario.ctx());
             stats::init_test(scenario.ctx());
             price_provider::init_test(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
         };
         
         // Add fee tier
@@ -6632,7 +6763,7 @@ module clmm_pool::pool_tests {
             let create_gauge_cap = scenario.take_from_sender<gauge_cap::gauge_cap::CreateCap>();
             let mut stats = scenario.take_shared<stats::Stats>();
             let price_provider = scenario.take_shared<price_provider::PriceProvider>();
-
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             // Create a new pool
             let mut pool = pool::new<TestCoinB, TestCoinA>(
                 1, // tick_spacing
@@ -6670,6 +6801,7 @@ module clmm_pool::pool_tests {
             // Add liquidity to the position
             let receipt = pool::add_liquidity<TestCoinB, TestCoinA>(
                 &global_config,
+                &mut vault,
                 &mut pool,
                 &mut position,
                 90<<64, // delta_liquidity
@@ -6702,6 +6834,7 @@ module clmm_pool::pool_tests {
 
             let (balance_a, balance_b, receipt) = pool::flash_swap<TestCoinB, TestCoinA>(
                 &global_config,
+                &mut vault,
                 &mut pool,
                 false,  // a2b
                 true,  // by_amount_in
@@ -6714,6 +6847,7 @@ module clmm_pool::pool_tests {
 
             let (balance_a2, balance_b2, receipt2) = pool::flash_swap<TestCoinB, TestCoinA>(
                 &global_config,
+                &mut vault,
                 &mut pool,
                 true,  // a2b
                 true,  // by_amount_in
@@ -6771,6 +6905,7 @@ module clmm_pool::pool_tests {
             transfer::public_transfer(create_gauge_cap, admin);
             test_scenario::return_shared(stats);
             test_scenario::return_shared(price_provider);
+            test_scenario::return_shared(vault);
             test_scenario::return_shared(global_config);
             clock::destroy_for_testing(clock);
         };

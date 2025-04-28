@@ -336,6 +336,7 @@ module clmm_pool::rewarder_tests {
         // Test settle functionality
         scenario.next_tx(admin);
         {
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             let mut test_rewarder = TestRewarder {
                 id: object::new(scenario.ctx()),
                 rewarder_manager: rewarder::new(),
@@ -345,14 +346,15 @@ module clmm_pool::rewarder_tests {
             rewarder::add_rewarder<MY_COIN>(&mut test_rewarder.rewarder_manager);
             
             // Test settle with zero liquidity
-            rewarder::settle(&mut test_rewarder.rewarder_manager, 0, 1000);
+            rewarder::settle(&mut vault, &mut test_rewarder.rewarder_manager, 0, 1000);
             assert!(rewarder::growth_global(rewarder::borrow_rewarder<MY_COIN>(&test_rewarder.rewarder_manager)) == 0, 1);
             
             // Test settle with non-zero liquidity
-            rewarder::settle(&mut test_rewarder.rewarder_manager, 1000, 2000);
+            rewarder::settle(&mut vault, &mut test_rewarder.rewarder_manager, 1000, 2000);
             assert!(rewarder::growth_global(rewarder::borrow_rewarder<MY_COIN>(&test_rewarder.rewarder_manager)) == 0, 2);
             
             transfer::public_transfer(test_rewarder, admin);
+            test_scenario::return_shared(vault);
         };
 
         scenario.end();
@@ -393,7 +395,7 @@ module clmm_pool::rewarder_tests {
             // Available balance: 1000
             // After shift: 1000 << 64 = 18446744073709551616000
             // This should fail because 1000 << 64 < 86400000
-            rewarder::update_emission<MY_COIN>(&vault, &mut test_rewarder.rewarder_manager, 1000, 1000 << 64, 1000);
+            rewarder::update_emission<MY_COIN>(&mut vault, &mut test_rewarder.rewarder_manager, 1000, 1000 << 64, 1000);
             
             test_scenario::return_shared(vault);
             test_scenario::return_shared(global_config);
@@ -418,7 +420,7 @@ module clmm_pool::rewarder_tests {
         // Try to update emission for non-existent rewarder
         scenario.next_tx(admin);
         {
-            let vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             let global_config = scenario.take_shared<clmm_pool::config::GlobalConfig>();
             let mut test_rewarder = TestRewarder {
                 id: object::new(scenario.ctx()),
@@ -426,7 +428,7 @@ module clmm_pool::rewarder_tests {
             };
             
             // Try to update emission without adding rewarder first
-            rewarder::update_emission<MY_COIN>(&vault, &mut test_rewarder.rewarder_manager, 1000, 1000, 1000);
+            rewarder::update_emission<MY_COIN>(&mut vault, &mut test_rewarder.rewarder_manager, 1000, 1000, 1000);
             
             test_scenario::return_shared(vault);
             test_scenario::return_shared(global_config);
@@ -450,6 +452,7 @@ module clmm_pool::rewarder_tests {
         // Test settle with invalid time
         scenario.next_tx(admin);
         {
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             let mut test_rewarder = TestRewarder {
                 id: object::new(scenario.ctx()),
                 rewarder_manager: rewarder::new(),
@@ -459,12 +462,13 @@ module clmm_pool::rewarder_tests {
             rewarder::add_rewarder<MY_COIN>(&mut test_rewarder.rewarder_manager);
             
             // First settle with time 2000
-            rewarder::settle(&mut test_rewarder.rewarder_manager, 1000, 2000);
+            rewarder::settle(&mut vault, &mut test_rewarder.rewarder_manager, 1000, 2000);
             
             // Try to settle with time 1000 (less than last_update_time)
-            rewarder::settle(&mut test_rewarder.rewarder_manager, 1000, 1000);
+            rewarder::settle(&mut vault, &mut test_rewarder.rewarder_manager, 1000, 1000);
             
             transfer::public_transfer(test_rewarder, admin);
+            test_scenario::return_shared(vault);
         };
 
         scenario.end();
@@ -529,6 +533,7 @@ module clmm_pool::rewarder_tests {
         // Test rewards_growth_global
         scenario.next_tx(admin);
         {
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             let mut test_rewarder = TestRewarder {
                 id: object::new(scenario.ctx()),
                 rewarder_manager: rewarder::new(),
@@ -556,7 +561,7 @@ module clmm_pool::rewarder_tests {
             assert!(*vector::borrow(&multiple_growth, 1) == 0, 6);
             
             // Update growth values using settle
-            rewarder::settle(&mut test_rewarder.rewarder_manager, 1000, 2000);
+            rewarder::settle(&mut vault, &mut test_rewarder.rewarder_manager, 1000, 2000);
             
             // Test updated growth values
             let updated_growth = rewarder::rewards_growth_global(&test_rewarder.rewarder_manager);
@@ -565,6 +570,7 @@ module clmm_pool::rewarder_tests {
             assert!(*vector::borrow(&updated_growth, 1) == 0, 9);
             
             transfer::public_transfer(test_rewarder, admin);
+            test_scenario::return_shared(vault);
         };
 
         scenario.end();
@@ -604,7 +610,7 @@ module clmm_pool::rewarder_tests {
             // Set emission rate
             let emission_rate = 1000;
             let shifted_rate = emission_rate << 64;
-            rewarder::update_emission<MY_COIN>(&vault, &mut test_rewarder.rewarder_manager, 1000, shifted_rate, 1000);
+            rewarder::update_emission<MY_COIN>(&mut vault, &mut test_rewarder.rewarder_manager, 1000, shifted_rate, 1000);
             
             // Verify emission rate was set
             let rewarder = rewarder::borrow_rewarder<MY_COIN>(&test_rewarder.rewarder_manager);
@@ -651,7 +657,7 @@ module clmm_pool::rewarder_tests {
             rewarder::deposit_reward(&global_config, &mut vault, balance);
             
             // Set emission rate to zero
-            rewarder::update_emission<MY_COIN>(&vault, &mut test_rewarder.rewarder_manager, 1000, 0, 1000);
+            rewarder::update_emission<MY_COIN>(&mut vault, &mut test_rewarder.rewarder_manager, 1000, 0, 1000);
             
             // Verify emission rate was set to zero
             let rewarder = rewarder::borrow_rewarder<MY_COIN>(&test_rewarder.rewarder_manager);

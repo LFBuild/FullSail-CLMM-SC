@@ -6,8 +6,6 @@ module clmm_pool::partner_tests {
     use sui::clock;
     use sui::coin;
     use sui::balance;
-    use sui::transfer;
-    use sui::tx_context;
     use sui::test_scenario;
 
     #[test_only]
@@ -88,7 +86,7 @@ module clmm_pool::partner_tests {
             assert!(partner::start_time(&partner) > 0, 3);
             assert!(partner::end_time(&partner) > partner::start_time(&partner), 4);
             
-            test_scenario::return_to_sender(&mut scenario, partner_cap);
+            test_scenario::return_to_sender(&scenario, partner_cap);
             test_scenario::return_shared(partners);
             test_scenario::return_shared(partner);
         };
@@ -415,7 +413,7 @@ module clmm_pool::partner_tests {
             );
 
             test_scenario::return_shared(global_config);
-            test_scenario::return_to_sender(&mut scenario, partner_cap);
+            test_scenario::return_to_sender(&scenario, partner_cap);
             test_scenario::return_shared(partner);
         };
 

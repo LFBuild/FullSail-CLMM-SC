@@ -1,9 +1,6 @@
 #[test_only]
 module clmm_pool::acl_tests {
-    use clmm_pool::acl::{Self, ACL, Member};
-    use sui::tx_context::{Self, TxContext};
-    use sui::transfer;
-    use sui::object;
+    use clmm_pool::acl::{Self, ACL};
     #[test_only]
     public struct TestACL has store, key {
         id: sui::object::UID,
@@ -229,7 +226,7 @@ module clmm_pool::acl_tests {
     #[test]
     fun test_has_role_nonexistent_member() {
         let mut ctx = tx_context::dummy();
-        let mut test_acl = TestACL {
+        let test_acl = TestACL {
             id: object::new(&mut ctx),
             acl: acl::new(&mut ctx),
         };
