@@ -760,7 +760,7 @@ module clmm_pool::pool {
     public fun update_emission<CoinTypeA, CoinTypeB, RewardCoinType>(
         global_config: &clmm_pool::config::GlobalConfig,
         pool: &mut Pool<CoinTypeA, CoinTypeB>,
-        rewarder_global_vault: &clmm_pool::rewarder::RewarderGlobalVault,
+        rewarder_global_vault: &mut clmm_pool::rewarder::RewarderGlobalVault,
         emissions_per_second: u128,
         clock: &sui::clock::Clock,
         ctx: &mut sui::tx_context::TxContext
@@ -846,6 +846,7 @@ module clmm_pool::pool {
     /// * If the pool is paused
     public fun add_liquidity<CoinTypeA, CoinTypeB>(
         global_config: &clmm_pool::config::GlobalConfig,
+        vault: &mut clmm_pool::rewarder::RewarderGlobalVault,
         pool: &mut Pool<CoinTypeA, CoinTypeB>,
         position: &mut clmm_pool::position::Position,
         delta_liquidity: u128,
@@ -854,6 +855,7 @@ module clmm_pool::pool {
         clmm_pool::config::checked_package_version(global_config);
         assert!(delta_liquidity != 0, EZeroLiquidity);
         add_liquidity_internal<CoinTypeA, CoinTypeB>(
+            vault,
             pool,
             position,
             false,
@@ -884,6 +886,7 @@ module clmm_pool::pool {
     /// * If the position is not valid for this pool
     public fun add_liquidity_fix_coin<CoinTypeA, CoinTypeB>(
         global_config: &clmm_pool::config::GlobalConfig,
+        vault: &mut clmm_pool::rewarder::RewarderGlobalVault,
         pool: &mut Pool<CoinTypeA, CoinTypeB>,
         position: &mut clmm_pool::position::Position,
         amount_in: u64,
@@ -893,6 +896,7 @@ module clmm_pool::pool {
         clmm_pool::config::checked_package_version(global_config);
         assert!(amount_in > 0, EZeroAmount);
         add_liquidity_internal<CoinTypeA, CoinTypeB>(
+            vault,
             pool,
             position,
             true,
@@ -923,6 +927,7 @@ module clmm_pool::pool {
     /// * If the pool is paused
     /// * If the position is not valid for this pool
     fun add_liquidity_internal<CoinTypeA, CoinTypeB>(
+        vault: &mut clmm_pool::rewarder::RewarderGlobalVault,
         pool: &mut Pool<CoinTypeA, CoinTypeB>,
         position: &mut clmm_pool::position::Position,
         is_fix_amount: bool,
@@ -933,7 +938,7 @@ module clmm_pool::pool {
     ): AddLiquidityReceipt<CoinTypeA, CoinTypeB> {
         assert!(!pool.is_pause, EPoolPaused);
         validate_pool_position<CoinTypeA, CoinTypeB>(pool, position);
-        clmm_pool::rewarder::settle(&mut pool.rewarder_manager, pool.liquidity, timestamp);
+        clmm_pool::rewarder::settle(vault, &mut pool.rewarder_manager, pool.liquidity, timestamp);
 
         let (tick_lower, tick_upper) = clmm_pool::position::tick_range(position);
 
@@ -1145,13 +1150,14 @@ module clmm_pool::pool {
     /// * If the position is not valid for this pool
     public fun calculate_and_update_points<CoinTypeA, CoinTypeB>(
         global_config: &clmm_pool::config::GlobalConfig,
+        vault: &mut clmm_pool::rewarder::RewarderGlobalVault,
         pool: &mut Pool<CoinTypeA, CoinTypeB>,
         position_id: sui::object::ID,
         clock: &sui::clock::Clock
     ): u128 {
         clmm_pool::config::checked_package_version(global_config);
         assert!(!pool.is_pause, EPoolPaused);
-        clmm_pool::rewarder::settle(&mut pool.rewarder_manager, pool.liquidity, sui::clock::timestamp_ms(clock) / 1000);
+        clmm_pool::rewarder::settle(vault, &mut pool.rewarder_manager, pool.liquidity, sui::clock::timestamp_ms(clock) / 1000);
         let position_info = clmm_pool::position::borrow_position_info(&pool.position_manager, position_id);
         if (clmm_pool::position::info_liquidity(position_info) != 0) {
             let (tick_lower, tick_upper) = clmm_pool::position::info_tick_range(position_info);
@@ -1183,13 +1189,14 @@ module clmm_pool::pool {
     /// * If the reward token does not exist
     public fun calculate_and_update_reward<CoinTypeA, CoinTypeB, RewardCoinType>(
         global_config: &clmm_pool::config::GlobalConfig,
+        vault: &mut clmm_pool::rewarder::RewarderGlobalVault,
         pool: &mut Pool<CoinTypeA, CoinTypeB>,
         position_id: sui::object::ID,
         clock: &sui::clock::Clock
     ): u64 {
         let mut rewarder_idx = clmm_pool::rewarder::rewarder_index<RewardCoinType>(&pool.rewarder_manager);
         assert!(std::option::is_some<u64>(&rewarder_idx), ERewarderIndexNotFound);
-        let rewards = calculate_and_update_rewards<CoinTypeA, CoinTypeB>(global_config, pool, position_id, clock);
+        let rewards = calculate_and_update_rewards<CoinTypeA, CoinTypeB>(global_config, vault,pool, position_id, clock);
         *std::vector::borrow<u64>(&rewards, std::option::extract<u64>(&mut rewarder_idx))
     }
 
@@ -1210,13 +1217,14 @@ module clmm_pool::pool {
     /// * If the package version is not compatible
     public fun calculate_and_update_rewards<CoinTypeA, CoinTypeB>(
         global_config: &clmm_pool::config::GlobalConfig,
+        vault: &mut clmm_pool::rewarder::RewarderGlobalVault,
         pool: &mut Pool<CoinTypeA, CoinTypeB>,
         position_id: sui::object::ID,
         clock: &sui::clock::Clock
     ): vector<u64> {
         clmm_pool::config::checked_package_version(global_config);
         assert!(!pool.is_pause, EPoolPaused);
-        clmm_pool::rewarder::settle(&mut pool.rewarder_manager, pool.liquidity, sui::clock::timestamp_ms(clock) / 1000);
+        clmm_pool::rewarder::settle(vault, &mut pool.rewarder_manager, pool.liquidity, sui::clock::timestamp_ms(clock) / 1000);
         let position_info = clmm_pool::position::borrow_position_info(&pool.position_manager, position_id);
         if (clmm_pool::position::info_liquidity(position_info) != 0) {
             let (tick_lower, tick_upper) = clmm_pool::position::info_tick_range(position_info);
@@ -1931,6 +1939,7 @@ module clmm_pool::pool {
     /// * If the rewarder index is not found (error code: ERewarderIndexNotFound)
     public fun collect_reward<CoinTypeA, CoinTypeB, RewardCoinType>(
         global_config: &clmm_pool::config::GlobalConfig,
+        vault: &mut clmm_pool::rewarder::RewarderGlobalVault,
         pool: &mut Pool<CoinTypeA, CoinTypeB>,
         position: &clmm_pool::position::Position,
         rewarder_vault: &mut clmm_pool::rewarder::RewarderGlobalVault,
@@ -1939,7 +1948,7 @@ module clmm_pool::pool {
     ): sui::balance::Balance<RewardCoinType> {
         clmm_pool::config::checked_package_version(global_config);
         assert!(!pool.is_pause, EPoolPaused);
-        clmm_pool::rewarder::settle(&mut pool.rewarder_manager, pool.liquidity, sui::clock::timestamp_ms(clock) / 1000);
+        clmm_pool::rewarder::settle(vault, &mut pool.rewarder_manager, pool.liquidity, sui::clock::timestamp_ms(clock) / 1000);
         let position_id = sui::object::id<clmm_pool::position::Position>(position);
         let mut rewarder_idx = clmm_pool::rewarder::rewarder_index<RewardCoinType>(&pool.rewarder_manager);
         assert!(std::option::is_some<u64>(&rewarder_idx), ERewarderIndexNotFound);
@@ -2077,6 +2086,7 @@ module clmm_pool::pool {
     /// * If no output amount is received (error code: EZeroOutputAmount)
     public fun flash_swap<CoinTypeA, CoinTypeB>(
         global_config: &clmm_pool::config::GlobalConfig,
+        vault: &mut clmm_pool::rewarder::RewarderGlobalVault,
         pool: &mut Pool<CoinTypeA, CoinTypeB>,
         a2b: bool,
         by_amount_in: bool,
@@ -2091,6 +2101,7 @@ module clmm_pool::pool {
         flash_swap_internal<CoinTypeA, CoinTypeB>(
             pool,
             global_config,
+            vault,
             sui::object::id_from_address(@0x0),
             0,
             a2b,
@@ -2137,6 +2148,7 @@ module clmm_pool::pool {
     fun flash_swap_internal<CoinTypeA, CoinTypeB>(
         pool: &mut Pool<CoinTypeA, CoinTypeB>,
         global_config: &clmm_pool::config::GlobalConfig,
+        vault: &mut clmm_pool::rewarder::RewarderGlobalVault,
         partner_id: sui::object::ID,
         ref_fee_rate: u64,
         a2b: bool,
@@ -2148,7 +2160,7 @@ module clmm_pool::pool {
         clock: &sui::clock::Clock
     ): (sui::balance::Balance<CoinTypeA>, sui::balance::Balance<CoinTypeB>, FlashSwapReceipt<CoinTypeA, CoinTypeB>) {
         assert!(amount > 0, EZeroAmount);
-        clmm_pool::rewarder::settle(&mut pool.rewarder_manager, pool.liquidity, sui::clock::timestamp_ms(clock) / 1000);
+        clmm_pool::rewarder::settle(vault, &mut pool.rewarder_manager, pool.liquidity, sui::clock::timestamp_ms(clock) / 1000);
         if (a2b) {
             assert!(pool.current_sqrt_price > sqrt_price_limit && sqrt_price_limit >= clmm_pool::tick_math::min_sqrt_price(), EInvalidPriceLimit);
         } else {
@@ -2250,6 +2262,7 @@ module clmm_pool::pool {
     /// * If no output amount is received (error code: EZeroOutputAmount)
     public fun flash_swap_with_partner<CoinTypeA, CoinTypeB>(
         global_config: &clmm_pool::config::GlobalConfig,
+        vault: &mut clmm_pool::rewarder::RewarderGlobalVault,
         pool: &mut Pool<CoinTypeA, CoinTypeB>,
         partner: &clmm_pool::partner::Partner,
         a2b: bool,
@@ -2265,6 +2278,7 @@ module clmm_pool::pool {
         flash_swap_internal<CoinTypeA, CoinTypeB>(
             pool,
             global_config,
+            vault,
             sui::object::id<clmm_pool::partner::Partner>(partner),
             clmm_pool::partner::current_ref_fee_rate(partner, sui::clock::timestamp_ms(clock) / 1000),
             a2b,
@@ -2877,6 +2891,7 @@ module clmm_pool::pool {
     /// * If the liquidity amount is zero or negative (error code: EZeroLiquidity)
     public fun remove_liquidity<CoinTypeA, CoinTypeB>(
         global_config: &clmm_pool::config::GlobalConfig,
+        vault: &mut clmm_pool::rewarder::RewarderGlobalVault,
         pool: &mut Pool<CoinTypeA, CoinTypeB>,
         position: &mut clmm_pool::position::Position,
         liquidity: u128,
@@ -2887,6 +2902,7 @@ module clmm_pool::pool {
         assert!(liquidity > 0, EZeroLiquidity);
         
         clmm_pool::rewarder::settle(
+            vault,
             &mut pool.rewarder_manager, 
             pool.liquidity, 
             sui::clock::timestamp_ms(clock) / 1000
@@ -3941,6 +3957,7 @@ module clmm_pool::pool {
     public fun flash_swap_internal_test<CoinTypeA, CoinTypeB>(
         pool: &mut Pool<CoinTypeA, CoinTypeB>,
         global_config: &clmm_pool::config::GlobalConfig,
+        vault: &mut clmm_pool::rewarder::RewarderGlobalVault,
         partner_id: sui::object::ID,
         ref_fee_rate: u64,
         a2b: bool,
@@ -3951,7 +3968,7 @@ module clmm_pool::pool {
         price_provider: &price_provider::price_provider::PriceProvider,
         clock: &sui::clock::Clock
     ): (sui::balance::Balance<CoinTypeA>, sui::balance::Balance<CoinTypeB>, FlashSwapReceipt<CoinTypeA, CoinTypeB>) {
-        flash_swap_internal(pool, global_config, partner_id, ref_fee_rate, a2b, by_amount_in, amount, sqrt_price_limit, stats, price_provider, clock)
+        flash_swap_internal(pool, global_config, vault, partner_id, ref_fee_rate, a2b, by_amount_in, amount, sqrt_price_limit, stats, price_provider, clock)
     }
 
     #[test_only]
@@ -4003,6 +4020,7 @@ module clmm_pool::pool {
 
     #[test_only]
     public fun add_liquidity_internal_test<CoinTypeA, CoinTypeB>(
+        vault: &mut clmm_pool::rewarder::RewarderGlobalVault,
         pool: &mut Pool<CoinTypeA, CoinTypeB>,
         position: &mut clmm_pool::position::Position,
         is_fix_amount: bool,
@@ -4011,7 +4029,7 @@ module clmm_pool::pool {
         is_fix_amount_a: bool,
         timestamp: u64
     ): AddLiquidityReceipt<CoinTypeA, CoinTypeB> {
-        add_liquidity_internal(pool, position, is_fix_amount, liquidity_delta, amount_in, is_fix_amount_a, timestamp)
+        add_liquidity_internal(vault, pool, position, is_fix_amount, liquidity_delta, amount_in, is_fix_amount_a, timestamp)
     }
 
     #[test_only]
