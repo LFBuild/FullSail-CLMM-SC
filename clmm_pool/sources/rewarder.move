@@ -440,8 +440,8 @@ module clmm_pool::rewarder {
         while (index < std::vector::length<Rewarder>(&manager.rewarders)) {
             let rewarder = std::vector::borrow_mut<Rewarder>(&mut manager.rewarders, index);
             if (!vault.available_balance.contains(rewarder.reward_coin) || 
-                vault.available_balance.borrow(rewarder.reward_coin) == 0 || 
                 rewarder.emissions_per_second == 0) {
+    
                 index = index + 1;
                 continue
             };
@@ -451,7 +451,7 @@ module clmm_pool::rewarder {
                 liquidity
             );
             let available_balance = vault.available_balance.remove(rewarder.reward_coin);
-            if (available_balance < add_growth_global * liquidity) {
+            if (available_balance <= add_growth_global * liquidity) {
                 rewarder.emissions_per_second = 0;
                 
                 add_growth_global = integer_mate::full_math_u128::mul_div_floor(
