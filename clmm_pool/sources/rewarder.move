@@ -29,6 +29,7 @@ module clmm_pool::rewarder {
     const EInvalidTime: u64 = 3;
     const EInsufficientBalance: u64 = 4;
     const ERewarderNotFound: u64 = 5;
+    const EOverflowBalance: u64 = 92394823577283472;
 
     /// Points multiplier for precision in calculations (MAX_U64 * 10^12)
     const POINTS_MULTIPLIER: u128 = 18446744073709551616000000;
@@ -243,7 +244,7 @@ module clmm_pool::rewarder {
             let available_balance = vault.available_balance.remove(reward_type);
             let (new_available_balance, overflow) = integer_mate::math_u128::overflowing_add(available_balance, (deposit_amount as u128)<<64);
             if (overflow) {
-                abort EInsufficientBalance
+                abort EOverflowBalance
             };
             vault.available_balance.add(reward_type, new_available_balance);
         };
