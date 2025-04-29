@@ -66,9 +66,11 @@ module clmm_pool::rewarder {
     /// # Fields
     /// * `id` - Unique identifier of the vault
     /// * `balances` - Bag containing reward token balances
+    /// * `available_balance` - Table tracking available reward balances in Q64 format, used to monitor and control reward distribution
     public struct RewarderGlobalVault has store, key {
         id: sui::object::UID,
         balances: sui::bag::Bag,
+        available_balance: sui::table::Table<std::type_name::TypeName, u128>,
     }
 
     /// Event emitted when the rewarder is initialized.
@@ -235,6 +237,16 @@ module clmm_pool::rewarder {
             );
         };
         let deposit_amount = sui::balance::value<RewardCoinType>(&balance);
+        if (!sui::table::contains<std::type_name::TypeName, u128>(&vault.available_balance, reward_type)) {
+            vault.available_balance.add(reward_type, (deposit_amount as u128)<<64);
+        } else {
+            let available_balance = vault.available_balance.remove(reward_type);
+            let (new_available_balance, overflow) = integer_mate::math_u128::overflowing_add(available_balance, (deposit_amount as u128)<<64);
+            if (overflow) {
+                abort EInsufficientBalance
+            };
+            vault.available_balance.add(reward_type, new_available_balance);
+        };
         let after_amount = sui::balance::join<RewardCoinType>(
             sui::bag::borrow_mut<std::type_name::TypeName, sui::balance::Balance<RewardCoinType>>(&mut vault.balances, reward_type),
             balance
@@ -259,7 +271,7 @@ module clmm_pool::rewarder {
     /// # Returns
     /// Balance of withdrawn reward tokens
     public fun emergent_withdraw<RewardCoinType>(
-        admin_cap: &clmm_pool::config::AdminCap,
+        _admin_cap: &clmm_pool::config::AdminCap,
         global_config: &clmm_pool::config::GlobalConfig,
         rewarder_vault: &mut RewarderGlobalVault,
         withdraw_amount: u64
@@ -304,6 +316,7 @@ module clmm_pool::rewarder {
         let vault = RewarderGlobalVault {
             id: sui::object::new(ctx),
             balances: sui::bag::new(ctx),
+            available_balance: sui::table::new(ctx),
         };
         let global_vault_id = sui::object::id<RewarderGlobalVault>(&vault);
         sui::transfer::share_object<RewarderGlobalVault>(vault);
@@ -410,7 +423,12 @@ module clmm_pool::rewarder {
     /// 
     /// # Abort Conditions
     /// * If current time is less than last update time (error code: EInvalidTime)
-    public(package) fun settle(manager: &mut RewarderManager, liquidity: u128, current_time: u64) {
+    public(package) fun settle(
+        vault: &mut RewarderGlobalVault,
+        manager: &mut RewarderManager, 
+        liquidity: u128, 
+        current_time: u64
+    ) {
         let last_time = manager.last_updated_time;
         manager.last_updated_time = current_time;
         assert!(last_time <= current_time, EInvalidTime);
@@ -420,14 +438,36 @@ module clmm_pool::rewarder {
         let time_delta = current_time - last_time;
         let mut index = 0;
         while (index < std::vector::length<Rewarder>(&manager.rewarders)) {
+            let rewarder = std::vector::borrow_mut<Rewarder>(&mut manager.rewarders, index);
+            if (!vault.available_balance.contains(rewarder.reward_coin) || 
+                rewarder.emissions_per_second == 0) {
+    
+                index = index + 1;
+                continue
+            };
+            let mut add_growth_global = integer_mate::full_math_u128::mul_div_floor(
+                time_delta as u128,
+                rewarder.emissions_per_second,
+                liquidity
+            );
+            let available_balance = vault.available_balance.remove(rewarder.reward_coin);
+            if (available_balance <= add_growth_global * liquidity) {
+                rewarder.emissions_per_second = 0;
+                
+                add_growth_global = integer_mate::full_math_u128::mul_div_floor(
+                    available_balance,
+                    1,
+                    liquidity
+                );
+                vault.available_balance.add(rewarder.reward_coin, 0);
+            } else {
+                vault.available_balance.add(rewarder.reward_coin, available_balance - (add_growth_global * liquidity));
+            };
             std::vector::borrow_mut<Rewarder>(&mut manager.rewarders, index).growth_global = std::vector::borrow<Rewarder>(
                 &manager.rewarders,
                 index
-            ).growth_global + integer_mate::full_math_u128::mul_div_floor(
-                time_delta as u128,
-                std::vector::borrow<Rewarder>(&manager.rewarders, index).emissions_per_second,
-                liquidity
-            );
+            ).growth_global + add_growth_global;
+            
             index = index + 1;
         };
         manager.points_released = manager.points_released + (time_delta as u128) * POINTS_MULTIPLIER;
@@ -444,27 +484,27 @@ module clmm_pool::rewarder {
     /// * `rewarder_vault` - Reference to the rewarder global vault
     /// * `rewarder_manager` - Mutable reference to the rewarder manager
     /// * `liquidity` - Current liquidity value
-    /// * `emission_rate` - New emission rate (already shifted by 64 bits)
+    /// * `emission_rate` - New emission rate Q64.64
     /// * `current_time` - Current timestamp
     /// 
     /// # Abort Conditions
     /// * If the reward token is not found in the vault (error code: ERewarderNotFound)
     /// * If the emission rate exceeds available balance (error code: EInsufficientBalance)
     public(package) fun update_emission<RewardCoinType>(
-        rewarder_vault: &RewarderGlobalVault,
+        rewarder_vault: &mut RewarderGlobalVault,
         rewarder_manager: &mut RewarderManager,
         liquidity: u128,
         emission_rate: u128,
         current_time: u64
     ) {
-        settle(rewarder_manager, liquidity, current_time);
+        settle(rewarder_vault, rewarder_manager, liquidity, current_time);
         if (emission_rate > 0) {
             let reward_type = std::type_name::get<RewardCoinType>();
             assert!(sui::bag::contains<std::type_name::TypeName>(&rewarder_vault.balances, reward_type), ERewarderNotFound);
             assert!(
                 (sui::balance::value<RewardCoinType>(
                     sui::bag::borrow<std::type_name::TypeName, sui::balance::Balance<RewardCoinType>>(&rewarder_vault.balances, reward_type)
-                ) as u128) >= (86400 * emission_rate >> 64),
+                ) as u128) >= (86400 * (emission_rate >> 64)),
                 EInsufficientBalance
             );
         };
@@ -497,6 +537,7 @@ module clmm_pool::rewarder {
         let vault = RewarderGlobalVault {
             id: sui::object::new(ctx),
             balances: sui::bag::new(ctx),
+            available_balance: sui::table::new(ctx),
         };
         sui::transfer::share_object(vault);
     }

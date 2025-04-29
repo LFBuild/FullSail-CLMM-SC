@@ -324,6 +324,7 @@ module clmm_pool::factory {
     public fun create_pool_with_liquidity<CoinTypeA, CoinTypeB>(
         pools: &mut Pools,
         global_config: &clmm_pool::config::GlobalConfig,
+        vault: &mut clmm_pool::rewarder::RewarderGlobalVault,
         tick_spacing: u32,
         initialize_sqrt_price: u128,
         url: std::string::String,
@@ -367,6 +368,7 @@ module clmm_pool::factory {
         };
         let receipt = clmm_pool::pool::add_liquidity_fix_coin<CoinTypeA, CoinTypeB>(
             global_config,
+            vault,
             &mut pool,
             &mut position,
             fix_amount,

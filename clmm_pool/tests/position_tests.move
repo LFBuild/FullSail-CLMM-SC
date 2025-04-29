@@ -1,46 +1,20 @@
 #[test_only]
 module clmm_pool::position_tests {
-    use sui::test_scenario::{Self, Scenario};
-    use sui::tx_context::{Self, TxContext};
+    use sui::test_scenario::{Self};
     use clmm_pool::position::{
         Self,
-        PositionInfo,
         PositionReward,
-        POSITION,
         PositionManager,
         Position,
         check_position_tick_range,
         new,
         open_position,
-        borrow_position_info,
-        is_staked,
-        mark_position_staked,
-        StakePositionEvent,
-        new_position_name,
-        borrow_mut_position_info,
-        reset_fee,
         test_update_fees,
-        reset_rewarder,
-        reward_amount_owned,
-        reward_growth_inside,
-        rewards_amount_owned,
         url,
-        update_and_reset_fee,
-        update_and_reset_fullsail_distribution,
-        update_and_reset_rewards,
-        update_fee,
-        update_fullsail_distribution,
-        update_points,
-        update_rewards,
     };
     use integer_mate::i32;
-    use sui::object;
-    use move_stl::linked_table;
-    use sui::transfer;
     use std::type_name;
     use std::string;
-    use sui::object::ID;
-    use std::vector;
 
     /// Test structure for managing position manager in tests
     #[test_only]
@@ -608,7 +582,7 @@ module clmm_pool::position_tests {
         let fee_growth_a = 0;
         let fee_growth_b = 0;
         let points_growth = 0;
-        let mut rewards_growth = vector::empty<u128>();
+        let rewards_growth = vector::empty<u128>();
         let fullsail_growth = 0;
         
         position::increase_liquidity(
@@ -743,7 +717,7 @@ module clmm_pool::position_tests {
         let fee_growth_a = 0;
         let fee_growth_b = 0;
         let points_growth = 0;
-        let mut rewards_growth = vector::empty<u128>();
+        let rewards_growth = vector::empty<u128>();
         let fullsail_growth = 0;
         
         position::increase_liquidity(
@@ -815,7 +789,7 @@ module clmm_pool::position_tests {
         let fee_growth_a = 0;
         let fee_growth_b = 0;
         let points_growth = 0;
-        let mut rewards_growth = vector::empty<u128>();
+        let rewards_growth = vector::empty<u128>();
         let fullsail_growth = 0;
         
         position::increase_liquidity(
@@ -842,7 +816,7 @@ module clmm_pool::position_tests {
         let fee_growth_a_updated = 100;
         let fee_growth_b_updated = 200;
         
-        let (fee_owned_a, fee_owned_b) = position::update_fee(
+        position::update_fee(
             &mut test_manager.position_manager,
             position_id,
             fee_growth_a_updated,
@@ -901,7 +875,7 @@ module clmm_pool::position_tests {
         let fee_growth_a = 0;
         let fee_growth_b = 0;
         let points_growth = 0;
-        let mut rewards_growth = vector::empty<u128>();
+        let rewards_growth = vector::empty<u128>();
         let fullsail_growth = 0;
         
         position::increase_liquidity(
@@ -993,7 +967,7 @@ module clmm_pool::position_tests {
         let fee_growth_a = 0;
         let fee_growth_b = 0;
         let points_growth = 0;
-        let mut rewards_growth = vector::empty<u128>();
+        let rewards_growth = vector::empty<u128>();
         let fullsail_growth = 0;
         
         let new_liquidity = position::increase_liquidity(
@@ -1066,7 +1040,7 @@ module clmm_pool::position_tests {
         let fee_growth_a = 0;
         let fee_growth_b = 0;
         let points_growth = 0;
-        let mut rewards_growth = vector::empty<u128>();
+        let rewards_growth = vector::empty<u128>();
         let fullsail_growth = 0;
         
         position::increase_liquidity(
@@ -1152,7 +1126,7 @@ module clmm_pool::position_tests {
         let fee_growth_a = 0;
         let fee_growth_b = 0;
         let points_growth = 0;
-        let mut rewards_growth = vector::empty<u128>();
+        let rewards_growth = vector::empty<u128>();
         let fullsail_growth = 0;
         
         position::increase_liquidity(
@@ -1238,7 +1212,7 @@ module clmm_pool::position_tests {
         let fee_growth_a = 0;
         let fee_growth_b = 0;
         let points_growth = 0;
-        let mut rewards_growth = vector::empty<u128>();
+        let rewards_growth = vector::empty<u128>();
         let fullsail_growth = 0;
         
         position::increase_liquidity(
@@ -1324,7 +1298,7 @@ module clmm_pool::position_tests {
         let fee_growth_a = 0;
         let fee_growth_b = 0;
         let points_growth = 0;
-        let mut rewards_growth = vector::empty<u128>();
+        let rewards_growth = vector::empty<u128>();
         let fullsail_growth = 0;
         
         position::increase_liquidity(
@@ -1343,7 +1317,7 @@ module clmm_pool::position_tests {
         let fee_growth_b_updated = 2000000;
         
         // First update fees to accumulate some fees
-        let (fee_owned_a_before, fee_owned_b_before) = position::update_fee(
+        position::update_fee(
             &mut test_manager.position_manager,
             object::id(&position),
             fee_growth_a_updated,
@@ -1374,7 +1348,7 @@ module clmm_pool::position_tests {
         assert!(position::info_liquidity(position_info) == initial_liquidity - liquidity_decrease, 6);
         
         // Verify fees were updated - they should be proportional to the remaining liquidity
-        let (fee_owned_a, fee_owned_b) = position::info_fee_owned(position_info);
+        position::info_fee_owned(position_info);
         
         
         // Verify that the fee growth values were updated
@@ -1432,7 +1406,7 @@ module clmm_pool::position_tests {
         let fee_growth_a = 0;
         let fee_growth_b = 0;
         let points_growth = 0;
-        let mut rewards_growth = vector::empty<u128>();
+        let rewards_growth = vector::empty<u128>();
         let fullsail_growth = 0;
         
         position::increase_liquidity(
@@ -1532,7 +1506,7 @@ module clmm_pool::position_tests {
         let fee_growth_a = 0;
         let fee_growth_b = 0;
         let points_growth = 0;
-        let mut rewards_growth = vector::empty<u128>();
+        let rewards_growth = vector::empty<u128>();
         let fullsail_growth = 0;
         
         position::increase_liquidity(
@@ -1621,7 +1595,7 @@ module clmm_pool::position_tests {
         let fee_growth_a = 0;
         let fee_growth_b = 0;
         let points_growth = 0;
-        let mut rewards_growth = vector::empty<u128>();
+        let rewards_growth = vector::empty<u128>();
         let fullsail_growth = 0;
         
         position::increase_liquidity(
@@ -1701,9 +1675,6 @@ module clmm_pool::position_tests {
             tick_upper,
             scenario.ctx()
         );
-        
-        // Get position ID
-        let position_id = object::id(&position);
         
         // Add some initial liquidity
         let initial_liquidity = 1000;
@@ -1827,7 +1798,7 @@ module clmm_pool::position_tests {
     /// 1. Valid tick range passes validation
     fun test_check_position_tick_range_valid() {
         let admin = @0x123;
-        let mut scenario = test_scenario::begin(admin);
+        let scenario = test_scenario::begin(admin);
         
         // Define valid tick range with tick spacing of 1
         let tick_lower = i32::from(0);
@@ -1847,7 +1818,7 @@ module clmm_pool::position_tests {
     #[expected_failure(abort_code = position::EInvalidTickRange)]
     fun test_check_position_tick_range_lower_greater_upper() {
         let admin = @0x123;
-        let mut scenario = test_scenario::begin(admin);
+        let scenario = test_scenario::begin(admin);
         
         // Define invalid tick range (lower > upper)
         let tick_lower = i32::from(10);
@@ -1867,7 +1838,7 @@ module clmm_pool::position_tests {
     #[expected_failure(abort_code = position::EInvalidTickRange)]
     fun test_check_position_tick_range_lower_less_than_min() {
         let admin = @0x123;
-        let mut scenario = test_scenario::begin(admin);
+        let scenario = test_scenario::begin(admin);
         
         // Define invalid tick range (lower < min_tick)
         // The minimum tick value in clmm_pool::tick_math::min_tick() is -443636
@@ -1889,7 +1860,7 @@ module clmm_pool::position_tests {
     #[expected_failure(abort_code = position::EInvalidTickRange)]
     fun test_check_position_tick_range_upper_greater_than_max() {
         let admin = @0x123;
-        let mut scenario = test_scenario::begin(admin);
+        let scenario = test_scenario::begin(admin);
         
         // Define invalid tick range (upper > max_tick)
         let tick_lower = i32::from(0);
@@ -1909,7 +1880,7 @@ module clmm_pool::position_tests {
     #[expected_failure(abort_code = position::EInvalidTickRange)]
     fun test_check_position_tick_range_lower_not_aligned() {
         let admin = @0x123;
-        let mut scenario = test_scenario::begin(admin);
+        let scenario = test_scenario::begin(admin);
         
         // Define invalid tick range (lower not aligned with tick spacing)
         let tick_lower = i32::from(1);
@@ -1929,7 +1900,7 @@ module clmm_pool::position_tests {
     #[expected_failure(abort_code = position::EInvalidTickRange)]
     fun test_check_position_tick_range_upper_not_aligned() {
         let admin = @0x123;
-        let mut scenario = test_scenario::begin(admin);
+        let scenario = test_scenario::begin(admin);
         
         // Define invalid tick range (upper not aligned with tick spacing)
         let tick_lower = i32::from(0);
@@ -1948,7 +1919,7 @@ module clmm_pool::position_tests {
     /// 1. Different tick spacing values work correctly with aligned ticks
     fun test_check_position_tick_range_different_spacing() {
         let admin = @0x123;
-        let mut scenario = test_scenario::begin(admin);
+        let scenario = test_scenario::begin(admin);
         
         // Test with tick spacing of 2
         let tick_lower_2 = i32::from(0);
@@ -2134,7 +2105,7 @@ module clmm_pool::position_tests {
         scenario.next_tx(admin);
 
         // Create a test position manager
-        let mut test_manager = TestPositionManager {
+        let test_manager = TestPositionManager {
             id: sui::object::new(scenario.ctx()),
             position_manager: position::new(1, scenario.ctx())
         };
@@ -2495,7 +2466,7 @@ module clmm_pool::position_tests {
         let _rewards = position::update_rewards(&mut test_manager.position_manager, position_id, rewards_growth);
         
         // Test reset_rewarder
-        let reset_amount = position::reset_rewarder(&mut test_manager.position_manager, position_id, 0);
+        position::reset_rewarder(&mut test_manager.position_manager, position_id, 0);
         
         // Verify reward was reset by checking the reward amount
         let position_info = position::borrow_position_info(&test_manager.position_manager, position_id);
@@ -2577,7 +2548,6 @@ module clmm_pool::position_tests {
         test_scenario::next_tx(&mut scenario, admin);
 
         // Create a position with a specific URL
-        let pool_url = string::utf8(b"https://example.com/pool");
         let position = position::open_position<type_name::TypeName, type_name::TypeName>(
             &mut test_manager.position_manager,
              object::id_from_address(admin),
@@ -2977,9 +2947,6 @@ module clmm_pool::position_tests {
                 tick_upper,
                 scenario.ctx()
             );
-
-            // Get position ID
-            let position_id = sui::object::id(&position);
 
             // Set custom display values
             let custom_description = std::string::utf8(b"Custom position description");

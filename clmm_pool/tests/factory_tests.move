@@ -1,29 +1,18 @@
 #[test_only]
 module clmm_pool::factory_tests {
     use sui::test_scenario;
-    use sui::object;
     use clmm_pool::config;
-    use sui::package;
+    use clmm_pool::rewarder;
     use sui::clock;
-    use sui::tx_context;
-    use sui::transfer;
-    use sui::event;
-    use move_stl::linked_table;
     use std::type_name;
-    use std::ascii;
-    use std::string;
-    use sui::hash;
-    use sui::bcs;
 
-    use clmm_pool::factory::{Self as factory, FACTORY, Pools, PoolSimpleInfo};
+    use clmm_pool::factory::{Self as factory, Pools, PoolSimpleInfo};
 
     public struct TestCoinA has drop {}
     public struct TestCoinB has drop {}
 
     #[test]
     fun test_new_pool_key_same_coin_types() {
-        let mut scenario = test_scenario::begin(@0x1);
-        let ctx = test_scenario::ctx(&mut scenario);
         
         // Should generate same key for same coin types
         let key1 = factory::new_pool_key<TestCoinA, TestCoinA>(1);
@@ -31,14 +20,10 @@ module clmm_pool::factory_tests {
         
         // Keys should be the same
         assert!(key1 == key2, 1);
-        
-        test_scenario::end(scenario);
     }
 
     #[test]
     fun test_new_pool_key_different_coin_types() {
-        let mut scenario = test_scenario::begin(@0x1);
-        let ctx = test_scenario::ctx(&mut scenario);
         
         // Should succeed with different coin types in correct order
         let key1 = factory::new_pool_key<TestCoinB, TestCoinA>(1);
@@ -46,33 +31,22 @@ module clmm_pool::factory_tests {
         
         // Keys should be the same for same coin type order
         assert!(key1 == key2, 1);
-        
-        test_scenario::end(scenario);
     }
 
     #[test]
     fun test_new_pool_key_different_tick_spacing() {
-        let mut scenario = test_scenario::begin(@0x1);
-        let ctx = test_scenario::ctx(&mut scenario);
         
         // Should generate different keys for different tick spacing
         let key1 = factory::new_pool_key<TestCoinB, TestCoinA>(1);
         let key2 = factory::new_pool_key<TestCoinB, TestCoinA>(2);
         
         assert!(key1 != key2, 1);
-        
-        test_scenario::end(scenario);
     }
 
     #[test]
     #[expected_failure(abort_code = 6)]
     fun test_new_pool_key_wrong_order() {
-        let mut scenario = test_scenario::begin(@0x1);
-        let ctx = test_scenario::ctx(&mut scenario);
-        
         factory::new_pool_key<TestCoinA, TestCoinB>(1);
-        
-        test_scenario::end(scenario);
     }
 
     #[test]
@@ -652,6 +626,7 @@ module clmm_pool::factory_tests {
         {
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
         };
         
         // Add fee tier
@@ -667,6 +642,7 @@ module clmm_pool::factory_tests {
         scenario.next_tx(admin);
         {
             let mut pools = scenario.take_shared<Pools>();
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             let global_config = scenario.take_shared<config::GlobalConfig>();
             let clock = clock::create_for_testing(scenario.ctx());
             
@@ -678,6 +654,7 @@ module clmm_pool::factory_tests {
             let (position, remaining_coin_a, remaining_coin_b) = factory::create_pool_with_liquidity<TestCoinB, TestCoinA>(
                 &mut pools,
                 &global_config,
+                &mut vault,
                 1, // tick_spacing
                 79228162514264337593543950336 >> 33, // current_sqrt_price (0.5)
                 std::string::utf8(b""), // url
@@ -715,6 +692,7 @@ module clmm_pool::factory_tests {
             transfer::public_transfer(position, admin);
             transfer::public_transfer(remaining_coin_a, admin);
             transfer::public_transfer(remaining_coin_b, admin);
+            test_scenario::return_shared(vault);
             test_scenario::return_shared(pools);
             test_scenario::return_shared(global_config);
             clock::destroy_for_testing(clock);
@@ -733,6 +711,7 @@ module clmm_pool::factory_tests {
         {
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
         };
         
         // Add fee tier
@@ -748,6 +727,7 @@ module clmm_pool::factory_tests {
         scenario.next_tx(admin);
         {
             let mut pools = scenario.take_shared<Pools>();
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             let global_config = scenario.take_shared<config::GlobalConfig>();
             let clock = clock::create_for_testing(scenario.ctx());
             
@@ -759,6 +739,7 @@ module clmm_pool::factory_tests {
             let (position, remaining_coin_a, remaining_coin_b) = factory::create_pool_with_liquidity<TestCoinB, TestCoinA>(
                 &mut pools,
                 &global_config,
+                &mut vault,
                 1, // tick_spacing
                 79228162514264337593543950336 >> 32, // current_sqrt_price (1.0)
                 std::string::utf8(b""), // url
@@ -780,6 +761,7 @@ module clmm_pool::factory_tests {
             transfer::public_transfer(position, admin);
             transfer::public_transfer(remaining_coin_a, admin);
             transfer::public_transfer(remaining_coin_b, admin);
+            test_scenario::return_shared(vault);
             test_scenario::return_shared(pools);
             test_scenario::return_shared(global_config);
             clock::destroy_for_testing(clock);
@@ -798,6 +780,7 @@ module clmm_pool::factory_tests {
         {
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
         };
         
         // Add fee tier
@@ -813,6 +796,7 @@ module clmm_pool::factory_tests {
         scenario.next_tx(admin);
         {
             let mut pools = scenario.take_shared<Pools>();
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             let global_config = scenario.take_shared<config::GlobalConfig>();
             let clock = clock::create_for_testing(scenario.ctx());
             
@@ -824,6 +808,7 @@ module clmm_pool::factory_tests {
             let (position, remaining_coin_a, remaining_coin_b) = factory::create_pool_with_liquidity<TestCoinB, TestCoinA>(
                 &mut pools,
                 &global_config,
+                &mut vault,
                 1, // tick_spacing
                 79228162514264337593543950336 >> 32, // current_sqrt_price (1.0)
                 std::string::utf8(b""), // url
@@ -845,6 +830,7 @@ module clmm_pool::factory_tests {
             transfer::public_transfer(position, admin);
             transfer::public_transfer(remaining_coin_a, admin);
             transfer::public_transfer(remaining_coin_b, admin);
+            test_scenario::return_shared(vault);
             test_scenario::return_shared(pools);
             test_scenario::return_shared(global_config);
             clock::destroy_for_testing(clock);
@@ -863,6 +849,7 @@ module clmm_pool::factory_tests {
         {
             factory::test_init(scenario.ctx());
             config::test_init(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
         };
         
         // Add fee tier
@@ -878,6 +865,7 @@ module clmm_pool::factory_tests {
         scenario.next_tx(admin);
         {
             let mut pools = scenario.take_shared<Pools>();
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             let global_config = scenario.take_shared<config::GlobalConfig>();
             let clock = clock::create_for_testing(scenario.ctx());
             
@@ -889,6 +877,7 @@ module clmm_pool::factory_tests {
             let (position, remaining_coin_a, remaining_coin_b) = factory::create_pool_with_liquidity<TestCoinB, TestCoinA>(
                 &mut pools,
                 &global_config,
+                &mut vault,
                 1, // tick_spacing
                 0, // invalid current_sqrt_price
                 std::string::utf8(b""), // url
@@ -910,6 +899,7 @@ module clmm_pool::factory_tests {
             transfer::public_transfer(position, admin);
             transfer::public_transfer(remaining_coin_a, admin);
             transfer::public_transfer(remaining_coin_b, admin);
+            test_scenario::return_shared(vault);
             test_scenario::return_shared(pools);
             test_scenario::return_shared(global_config);
             clock::destroy_for_testing(clock);
