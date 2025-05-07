@@ -42,15 +42,16 @@ module clmm_pool::pool {
     const EInvalidTick: u64 = 19;
     const ENextTickNotFound: u64 = 20;
     const EInvalidRefFeeAmount: u64 = 21;
-    const EPositionPoolIdMismatch: u64 = 9223373806381301759;
-    const EInvalidTickRange: u64 = 9223378947457155071;
-    const ELiquidityAdditionOverflow: u64 = 9223379033357877270;
-    const EZeroUnstakeLiquidity: u64 = 9223379200860225535;
-    const EGaugerIdNotFound: u64 = 9223379295349506047;
-    const EInvalidGaugeCap: u64 = 9223379355479048191;
-    const EPoolNotPaused: u64 = 9223378204427812863;
-    const EPoolAlreadyPaused: u64 = 9223376739843964927;
-    const EInsufficientStakedLiquidity: u64 = 9223379024766566399;
+    const EPartnerIdNotEmpty: u64 = 920354934523526751;
+    const EPositionPoolIdMismatch: u64 = 922337380638130175;
+    const EInvalidTickRange: u64 = 922337894745715507;
+    const ELiquidityAdditionOverflow: u64 = 922337903335787727;
+    const EZeroUnstakeLiquidity: u64 = 922337920086022553;
+    const EGaugerIdNotFound: u64 = 922337929534950604;
+    const EInvalidGaugeCap: u64 = 922337935547904819;
+    const EPoolNotPaused: u64 = 922337820442781286;
+    const EPoolAlreadyPaused: u64 = 922337673984396492;
+    const EInsufficientStakedLiquidity: u64 = 922337902476656639;
 
     public struct POOL has drop {}
 
@@ -177,7 +178,7 @@ module clmm_pool::pool {
     public struct FlashSwapReceipt<phantom CoinTypeA, phantom CoinTypeB> {
         pool_id: sui::object::ID,
         a2b: bool,
-        partner_id: sui::object::ID,
+        partner_id: std::option::Option<sui::object::ID>,
         pay_amount: u64,
         fee_amount: u64,
         protocol_fee_amount: u64,
@@ -2101,7 +2102,7 @@ module clmm_pool::pool {
             pool,
             global_config,
             vault,
-            sui::object::id_from_address(@0x0),
+            std::option::none<sui::object::ID>(),
             0,
             a2b,
             by_amount_in,
@@ -2148,7 +2149,7 @@ module clmm_pool::pool {
         pool: &mut Pool<CoinTypeA, CoinTypeB>,
         global_config: &clmm_pool::config::GlobalConfig,
         vault: &mut clmm_pool::rewarder::RewarderGlobalVault,
-        partner_id: sui::object::ID,
+        partner_id: std::option::Option<sui::object::ID>,
         ref_fee_rate: u64,
         a2b: bool,
         by_amount_in: bool,
@@ -2200,11 +2201,16 @@ module clmm_pool::pool {
         //     pool.volume_usd_coin_b
         //  stats.add_total_volume_internal();
         // }
+        let partner_id_event = if (partner_id.is_none()) {
+            sui::object::id_from_address(@0x0)
+        } else {
+            *partner_id.borrow()
+        };
 
         let swap_event = SwapEvent {
             atob: a2b,
             pool: sui::object::id<Pool<CoinTypeA, CoinTypeB>>(pool),
-            partner: partner_id,
+            partner: partner_id_event,
             amount_in: swap_result.amount_in + swap_result.fee_amount,
             amount_out: swap_result.amount_out,
             fullsail_fee_amount: swap_result.gauge_fee_amount,
@@ -2278,7 +2284,7 @@ module clmm_pool::pool {
             pool,
             global_config,
             vault,
-            sui::object::id<clmm_pool::partner::Partner>(partner),
+            std::option::some<sui::object::ID>(sui::object::id<clmm_pool::partner::Partner>(partner)),
             clmm_pool::partner::current_ref_fee_rate(partner, sui::clock::timestamp_ms(clock) / 1000),
             a2b,
             by_amount_in,
@@ -3038,7 +3044,7 @@ module clmm_pool::pool {
         let FlashSwapReceipt {
             pool_id,
             a2b,
-            partner_id: _,
+            partner_id: partner_id,
             pay_amount,
             fee_amount: _,
             protocol_fee_amount: _,
@@ -3046,6 +3052,7 @@ module clmm_pool::pool {
             gauge_fee_amount: _,
         } = receipt;
         assert!(sui::object::id<Pool<CoinTypeA, CoinTypeB>>(pool) == pool_id, EInvalidPoolOrPartnerId);
+        assert!(partner_id.is_none(), EPartnerIdNotEmpty);
         assert!(ref_fee_amount == 0, EInvalidRefFeeAmount);
         if (a2b) {
             assert!(sui::balance::value<CoinTypeA>(&balance_a) == pay_amount, EZeroAmount);
@@ -3097,7 +3104,8 @@ module clmm_pool::pool {
             gauge_fee_amount: _,
         } = receipt;
         assert!(sui::object::id<Pool<CoinTypeA, CoinTypeB>>(pool) == pool_id, EInvalidPoolOrPartnerId);
-        assert!(sui::object::id<clmm_pool::partner::Partner>(partner) == partner_id, EPartnerIdMismatch);
+        assert!(!partner_id.is_none() && 
+            sui::object::id<clmm_pool::partner::Partner>(partner) == partner_id.borrow(), EPartnerIdMismatch);
         if (a2b) {
             assert!(sui::balance::value<CoinTypeA>(&balance_a) == pay_amount, EZeroAmount);
             if (ref_fee_amount > 0) {
@@ -3967,7 +3975,7 @@ module clmm_pool::pool {
         price_provider: &price_provider::price_provider::PriceProvider,
         clock: &sui::clock::Clock
     ): (sui::balance::Balance<CoinTypeA>, sui::balance::Balance<CoinTypeB>, FlashSwapReceipt<CoinTypeA, CoinTypeB>) {
-        flash_swap_internal(pool, global_config, vault, partner_id, ref_fee_rate, a2b, by_amount_in, amount, sqrt_price_limit, stats, price_provider, clock)
+        flash_swap_internal(pool, global_config, vault, std::option::some<sui::object::ID>(partner_id), ref_fee_rate, a2b, by_amount_in, amount, sqrt_price_limit, stats, price_provider, clock)
     }
 
     #[test_only]
