@@ -604,6 +604,7 @@ module clmm_pool::pool {
         pool: &Pool<CoinTypeA, CoinTypeB>,
         position_id: sui::object::ID
     ): &clmm_pool::position::PositionInfo {
+        clmm_pool::position::validate_position_exists(&pool.position_manager, position_id);
         clmm_pool::position::borrow_position_info(&pool.position_manager, position_id)
     }
 
@@ -624,6 +625,8 @@ module clmm_pool::pool {
     ) {
         clmm_pool::config::checked_package_version(config);
         assert!(!pool.is_pause, EPoolPaused);
+        validate_pool_position<CoinTypeA, CoinTypeB>(pool, &position);
+
         let position_id = sui::object::id<clmm_pool::position::Position>(&position);
         clmm_pool::position::close_position(&mut pool.position_manager, position);
         let event = ClosePositionEvent {
@@ -695,6 +698,8 @@ module clmm_pool::pool {
     ) {
         assert!(!pool.is_pause, EPoolPaused);
         check_gauge_cap<CoinTypeA, CoinTypeB>(pool, gauge_cap);
+        clmm_pool::position::validate_position_exists(&pool.position_manager, position_id);
+
         clmm_pool::position::mark_position_staked(&mut pool.position_manager, position_id, true);
     }
 
@@ -855,6 +860,8 @@ module clmm_pool::pool {
     ): AddLiquidityReceipt<CoinTypeA, CoinTypeB> {
         clmm_pool::config::checked_package_version(global_config);
         assert!(delta_liquidity != 0, EZeroLiquidity);
+        validate_pool_position<CoinTypeA, CoinTypeB>(pool, position);
+
         add_liquidity_internal<CoinTypeA, CoinTypeB>(
             vault,
             pool,
@@ -895,7 +902,7 @@ module clmm_pool::pool {
         clock: &sui::clock::Clock
     ): AddLiquidityReceipt<CoinTypeA, CoinTypeB> {
         clmm_pool::config::checked_package_version(global_config);
-        assert!(amount_in > 0, EZeroAmount);
+        assert!(amount_in > 0, EZeroAmount);        
         add_liquidity_internal<CoinTypeA, CoinTypeB>(
             vault,
             pool,
@@ -1082,6 +1089,8 @@ module clmm_pool::pool {
     ): (u64, u64) {
         clmm_pool::config::checked_package_version(global_config);
         assert!(!pool.is_pause, EPoolPaused);
+        clmm_pool::position::validate_position_exists(&pool.position_manager, position_id);
+
         let position_info = clmm_pool::position::borrow_position_info(&pool.position_manager, position_id);
         if (clmm_pool::position::info_liquidity(position_info) != 0) {
             let (tick_lower, tick_upper) = clmm_pool::position::info_tick_range(position_info);
@@ -1115,6 +1124,8 @@ module clmm_pool::pool {
     ): u64 {
         clmm_pool::config::checked_package_version(global_config);
         assert!(!pool.is_pause, EPoolPaused);
+        clmm_pool::position::validate_position_exists(&pool.position_manager, position_id);
+
         let position_info = clmm_pool::position::borrow_position_info(&pool.position_manager, position_id);
         if (clmm_pool::position::info_liquidity(position_info) != 0) {
             let (tick_lower, tick_upper) = clmm_pool::position::info_tick_range(position_info);
@@ -1158,6 +1169,8 @@ module clmm_pool::pool {
     ): u128 {
         clmm_pool::config::checked_package_version(global_config);
         assert!(!pool.is_pause, EPoolPaused);
+        clmm_pool::position::validate_position_exists(&pool.position_manager, position_id);
+
         clmm_pool::rewarder::settle(vault, &mut pool.rewarder_manager, pool.liquidity, sui::clock::timestamp_ms(clock) / 1000);
         let position_info = clmm_pool::position::borrow_position_info(&pool.position_manager, position_id);
         if (clmm_pool::position::info_liquidity(position_info) != 0) {
@@ -1225,6 +1238,8 @@ module clmm_pool::pool {
     ): vector<u64> {
         clmm_pool::config::checked_package_version(global_config);
         assert!(!pool.is_pause, EPoolPaused);
+        clmm_pool::position::validate_position_exists(&pool.position_manager, position_id);
+
         clmm_pool::rewarder::settle(vault, &mut pool.rewarder_manager, pool.liquidity, sui::clock::timestamp_ms(clock) / 1000);
         let position_info = clmm_pool::position::borrow_position_info(&pool.position_manager, position_id);
         if (clmm_pool::position::info_liquidity(position_info) != 0) {
@@ -1792,6 +1807,8 @@ module clmm_pool::pool {
     ): (sui::balance::Balance<CoinTypeA>, sui::balance::Balance<CoinTypeB>) {
         clmm_pool::config::checked_package_version(global_config);
         assert!(!pool.is_pause, EPoolPaused);
+        validate_pool_position<CoinTypeA, CoinTypeB>(pool, position);
+        
         let position_id = sui::object::id<clmm_pool::position::Position>(position);
         if (clmm_pool::position::is_staked(borrow_position_info<CoinTypeA, CoinTypeB>(pool, position_id))) {
             return (sui::balance::zero<CoinTypeA>(), sui::balance::zero<CoinTypeB>())
@@ -1948,6 +1965,8 @@ module clmm_pool::pool {
     ): sui::balance::Balance<RewardCoinType> {
         clmm_pool::config::checked_package_version(global_config);
         assert!(!pool.is_pause, EPoolPaused);
+        validate_pool_position<CoinTypeA, CoinTypeB>(pool, position);
+        
         clmm_pool::rewarder::settle(rewarder_vault, &mut pool.rewarder_manager, pool.liquidity, sui::clock::timestamp_ms(clock) / 1000);
         let position_id = sui::object::id<clmm_pool::position::Position>(position);
         let mut rewarder_idx = clmm_pool::rewarder::rewarder_index<RewardCoinType>(&pool.rewarder_manager);
@@ -2602,6 +2621,7 @@ module clmm_pool::pool {
         pool_state: &mut Pool<CoinTypeA, CoinTypeB>,
         position_id: sui::object::ID
     ): (u64, u64) {
+        clmm_pool::position::validate_position_exists(&pool_state.position_manager, position_id);
         let current_position = clmm_pool::position::borrow_position_info(&pool_state.position_manager, position_id);
         let (tick_lower, tick_upper) = clmm_pool::position::info_tick_range(current_position);
         get_amount_by_liquidity(
@@ -2629,6 +2649,7 @@ module clmm_pool::pool {
         pool: &Pool<CoinTypeA, CoinTypeB>,
         position_id: sui::object::ID
     ): (u64, u64) {
+        clmm_pool::position::validate_position_exists(&pool.position_manager, position_id);
         clmm_pool::position::info_fee_owned(
             clmm_pool::position::borrow_position_info(&pool.position_manager, position_id)
         )
@@ -2647,6 +2668,7 @@ module clmm_pool::pool {
         pool: &Pool<CoinTypeA, CoinTypeB>, 
         position_id: sui::object::ID
     ): u128 {
+        clmm_pool::position::validate_position_exists(&pool.position_manager, position_id);
         clmm_pool::position::info_points_owned(
             clmm_pool::position::borrow_position_info(&pool.position_manager, position_id)
         )
@@ -2666,6 +2688,8 @@ module clmm_pool::pool {
         pool: &Pool<CoinTypeA, CoinTypeB>,
         position_id: sui::object::ID
     ): u64 {
+        clmm_pool::position::validate_position_exists(&pool.position_manager, position_id);
+
         let mut rewarder_idx = clmm_pool::rewarder::rewarder_index<RewardCoinType>(&pool.rewarder_manager);
         assert!(std::option::is_some<u64>(&rewarder_idx), ERewarderIndexNotFound);
         let rewards = clmm_pool::position::rewards_amount_owned(&pool.position_manager, position_id);
@@ -2685,6 +2709,8 @@ module clmm_pool::pool {
         pool: &Pool<CoinTypeA, CoinTypeB>, 
         position_id: sui::object::ID
     ): vector<u64> {
+        clmm_pool::position::validate_position_exists(&pool.position_manager, position_id);
+
         clmm_pool::position::rewards_amount_owned(&pool.position_manager, position_id)
     }
 
@@ -2814,6 +2840,8 @@ module clmm_pool::pool {
     ) {
         assert!(!pool.is_pause, EPoolPaused);
         check_gauge_cap<CoinTypeA, CoinTypeB>(pool, gauge_cap);
+        clmm_pool::position::validate_position_exists(&pool.position_manager, position_id);
+
         clmm_pool::position::mark_position_staked(&mut pool.position_manager, position_id, false);
     }
 
@@ -2905,6 +2933,7 @@ module clmm_pool::pool {
         clmm_pool::config::checked_package_version(global_config);
         assert!(!pool.is_pause, EPoolPaused);
         assert!(liquidity > 0, EZeroLiquidity);
+        validate_pool_position<CoinTypeA, CoinTypeB>(pool, position);
         
         clmm_pool::rewarder::settle(
             vault,

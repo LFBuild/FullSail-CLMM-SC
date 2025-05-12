@@ -230,6 +230,23 @@ module clmm_pool::position {
         assert!(position_info.position_id == position_id, EPositionNotFound);
         position_info
     }
+
+    /// Validates that a position exists in the position manager and its ID matches.
+    /// This function performs two checks:
+    /// * Verifies that the position exists in the position manager's linked table
+    /// * Confirms that the stored position ID matches the provided position ID
+    /// 
+    /// # Arguments
+    /// * `position_manager` - Reference to the position manager
+    /// * `position_id` - ID of the position to validate
+    /// 
+    /// # Abort Conditions
+    /// * If the position does not exist in the position manager (error code: EPositionNotFound)
+    /// * If the position ID does not match the stored ID (error code: EPositionNotFound)
+    public fun validate_position_exists(position_manager: &PositionManager, position_id: sui::object::ID) {
+        assert!(move_stl::linked_table::contains<sui::object::ID, PositionInfo>(&position_manager.positions, position_id), EPositionNotFound);
+        assert!(move_stl::linked_table::borrow<sui::object::ID, PositionInfo>(&position_manager.positions, position_id).position_id == position_id, EPositionNotFound);
+    }
     
     /// Validates the tick range for a position.
     /// Checks that:
