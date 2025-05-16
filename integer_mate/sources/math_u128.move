@@ -110,6 +110,27 @@ module integer_mate::math_u128 {
         (MAX_U128 - num1 >= num2)
     }
 
+   public fun is_neg(n: u128): bool {
+        if (n > MAX_U128/2) {
+            true
+        } else {
+            false
+        }
+    }
+
+    public fun greater_or_equal_overflowing(n1: u128, n2: u128): bool {
+        let is_n1_negative = n1 > MAX_U128/2;
+        let is_n2_negative = n2 > MAX_U128/2;
+        
+        if (is_n1_negative && is_n2_negative) {
+            n1 >= n2
+        } else if (!is_n1_negative && !is_n2_negative) {
+            n1 >= n2
+        } else {
+            !is_n1_negative
+        }
+    }
+
     #[test]
     fun test_overflowing_add() {
         let (m, o) = overflowing_add(10, 10);
