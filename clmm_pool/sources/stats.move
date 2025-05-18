@@ -18,11 +18,11 @@
 /// * `add_total_volume_internal` - Internal function to update total volume
 module clmm_pool::stats {
     use sui::object::{Self, ID, UID};
-    use sui::transfer;
     use sui::tx_context::{Self, TxContext};
     use sui::event;
     use clmm_pool::config::{Self, GlobalConfig};
-    use clmm_pool::acl;
+
+    const EOverflow: u64 = 932523069343634633;
 
     /// Event emitted when stats are initialized.
     /// Contains the ID of the created Stats object.
@@ -41,7 +41,7 @@ module clmm_pool::stats {
     /// * `total_volume` - Cumulative trading volume in the pool
     public struct Stats has store, key {
         id: UID,
-        total_volume: u64,
+        total_volume: u256,
     }
 
     /// Creates and initializes a new Stats object.
@@ -70,8 +70,8 @@ module clmm_pool::stats {
     /// * `stats` - Reference to the Stats object
     /// 
     /// # Returns
-    /// The current total trading volume as u64
-    public fun get_total_volume(stats: &Stats): u64 {
+    /// The current total trading volume as u256
+    public fun get_total_volume(stats: &Stats): u256 {
         stats.total_volume
     }
 
@@ -80,11 +80,13 @@ module clmm_pool::stats {
     /// 
     /// # Arguments
     /// * `stats` - Mutable reference to the Stats object
-    /// * `amount` - Amount to add to the total volume
+    /// * `amount` - Amount to add to the total volume (Q64.64)
     /// 
     /// # Implementation Details
     /// Adds the specified amount to the current total volume
-    public(package) fun add_total_volume_internal(stats: &mut Stats, amount: u64) {
+    public(package) fun add_total_volume_internal(stats: &mut Stats, amount: u256) {
+        assert!(integer_mate::math_u256::add_check(stats.total_volume, amount), EOverflow);
+        
         stats.total_volume = stats.total_volume + amount;
     }
 

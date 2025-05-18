@@ -3,12 +3,14 @@ module clmm_pool::factory_tests {
     use sui::test_scenario;
     use clmm_pool::config;
     use clmm_pool::rewarder;
+    use clmm_pool::clmm_math;
     use sui::clock;
     use std::type_name;
 
     use clmm_pool::factory::{Self as factory, Pools, PoolSimpleInfo};
 
     public struct TestCoinA has drop {}
+    public struct TestCoinA0 has drop {}
     public struct TestCoinB has drop {}
 
     #[test]
@@ -20,6 +22,16 @@ module clmm_pool::factory_tests {
         
         // Keys should be the same
         assert!(key1 == key2, 1);
+    }
+
+    #[test]
+    #[expected_failure(abort_code = factory::EInvalidBytesLength)]
+    fun test_invalid_bytes_length() {
+        
+        // Should generate same key for same coin types
+        factory::new_pool_key<TestCoinA, TestCoinA0>(1);
+        factory::new_pool_key<TestCoinA0, TestCoinA>(1);
+        
     }
 
     #[test]
@@ -44,7 +56,7 @@ module clmm_pool::factory_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 6)]
+    #[expected_failure(abort_code = factory::EInvalidCoinOrder)]
     fun test_new_pool_key_wrong_order() {
         factory::new_pool_key<TestCoinA, TestCoinB>(1);
     }
@@ -174,7 +186,7 @@ module clmm_pool::factory_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 2)]
+    #[expected_failure(abort_code = factory::EInvalidSqrtPrice)]
     fun test_create_pool_internal_invalid_sqrt_price() {
         let admin = @0x1;
         let mut scenario = test_scenario::begin(admin);
@@ -225,7 +237,7 @@ module clmm_pool::factory_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 3)]
+    #[expected_failure(abort_code = factory::ESameCoinTypes)]
     fun test_create_pool_internal_same_coin_types() {
         let admin = @0x1;
         let mut scenario = test_scenario::begin(admin);
@@ -276,7 +288,7 @@ module clmm_pool::factory_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 1)]
+    #[expected_failure(abort_code = factory::EPoolAlreadyExists)]
     fun test_create_pool_internal_duplicate_pool() {
         let admin = @0x1;
         let mut scenario = test_scenario::begin(admin);
@@ -454,7 +466,7 @@ module clmm_pool::factory_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 2)]
+    #[expected_failure(abort_code = factory::EInvalidSqrtPrice)]
     fun test_create_pool_invalid_sqrt_price() {
         let admin = @0x1;
         let mut scenario = test_scenario::begin(admin);
@@ -504,7 +516,7 @@ module clmm_pool::factory_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 3)]
+    #[expected_failure(abort_code = factory::ESameCoinTypes)]
     fun test_create_pool_same_coin_types() {
         let admin = @0x1;
         let mut scenario = test_scenario::begin(admin);
@@ -554,7 +566,7 @@ module clmm_pool::factory_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 1)]
+    #[expected_failure(abort_code = factory::EPoolAlreadyExists)]
     fun test_create_pool_duplicate() {
         let admin = @0x1;
         let mut scenario = test_scenario::begin(admin);
@@ -702,7 +714,7 @@ module clmm_pool::factory_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 3020)]
+    #[expected_failure(abort_code = clmm_math::EZeroSqrtPriceDiff)]
     fun test_create_pool_with_liquidity_exceed_amount_b() {
         let admin = @0x1;
         let mut scenario = test_scenario::begin(admin);
@@ -771,7 +783,7 @@ module clmm_pool::factory_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 3020)]
+    #[expected_failure(abort_code = clmm_math::EZeroSqrtPriceDiff)]
     fun test_create_pool_with_liquidity_exceed_amount_a() {
         let admin = @0x1;
         let mut scenario = test_scenario::begin(admin);
@@ -840,7 +852,7 @@ module clmm_pool::factory_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 2)]
+    #[expected_failure(abort_code = factory::EInvalidSqrtPrice)]
     fun test_create_pool_with_liquidity_invalid_sqrt_price() {
         let admin = @0x1;
         let mut scenario = test_scenario::begin(admin);
@@ -923,8 +935,8 @@ module clmm_pool::factory_tests {
         {
             let pools = scenario.take_shared<Pools>();
             
-            // Test fetching pools with empty pool_ids and limit 0
-            let result = factory::fetch_pools(&pools, std::vector::empty<sui::object::ID>(), 0);
+            // Test fetching pools with empty pre_start_pool_id and limit 0
+            let result = factory::fetch_pools(&pools, option::none(), 0);
             assert!(std::vector::length(&result) == 0, 1);
             
             test_scenario::return_shared(pools);
@@ -999,35 +1011,33 @@ module clmm_pool::factory_tests {
             let clock = clock::create_for_testing(scenario.ctx());
             
             // Test fetching pools with limit
-            let result = factory::fetch_pools(&pools, std::vector::empty<sui::object::ID>(), 1);
+            let result = factory::fetch_pools(&pools, option::none(), 1);
             assert!(std::vector::length(&result) == 1, 1);
             
-            let result = factory::fetch_pools(&pools, std::vector::empty<sui::object::ID>(), 2);
+            let result = factory::fetch_pools(&pools, option::none(), 2);
             assert!(std::vector::length(&result) == 2, 2);
             
             // Get pool keys from the table
             let pool1_key = factory::new_pool_key<TestCoinB, TestCoinA>(1);
             let pool2_key = factory::new_pool_key<TestCoinB, TestCoinA>(2);
             
-            // Get pool1 info directly from the table
-            let pool1_info = pools.pool_simple_info(pool1_key);
+            // Get pool2 info directly from the table
+            // let pool1_info = pools.pool_simple_info(pool1_key);
+            let pool2_info = pools.pool_simple_info(pool2_key);
             
             // Test fetching with specific pool key
-            let mut pool_keys = std::vector::empty<sui::object::ID>();
-            std::vector::push_back(&mut pool_keys, pool1_key);
-            
-            let result = factory::fetch_pools(&pools, pool_keys, 1);
+            let result = factory::fetch_pools(&pools, option::some(pool1_key), 1);
             assert!(std::vector::length(&result) == 1, 3);
             
             // Verify that returned info matches pool1 info
             let returned_info = std::vector::borrow<PoolSimpleInfo>(&result, 0);
-            assert!(returned_info.pool_id() == pool1_info.pool_id(), 4);
-            assert!(returned_info.pool_key() == pool1_info.pool_key(), 5);
-            assert!(returned_info.tick_spacing() == pool1_info.tick_spacing(), 6);
+            assert!(returned_info.pool_id() == pool2_info.pool_id(), 4);
+            assert!(returned_info.pool_key() == pool2_info.pool_key(), 5);
+            assert!(returned_info.tick_spacing() == pool2_info.tick_spacing(), 6);
             let (returned_coin_a, returned_coin_b) = returned_info.coin_types();
-            let (pool1_coin_a, pool1_coin_b) = pool1_info.coin_types();
-            assert!(returned_coin_a == pool1_coin_a, 7);
-            assert!(returned_coin_b == pool1_coin_b, 8);
+            let (pool2_coin_a, pool2_coin_b) = pool2_info.coin_types();
+            assert!(returned_coin_a == pool2_coin_a, 7);
+            assert!(returned_coin_b == pool2_coin_b, 8);
             
             test_scenario::return_shared(pools);
             test_scenario::return_shared(global_config);
@@ -1055,11 +1065,9 @@ module clmm_pool::factory_tests {
             let pools = scenario.take_shared<Pools>();
             
             // Test fetching pools with invalid pool_id
-            let mut pool_ids = std::vector::empty<sui::object::ID>();
             // Use a completely different ID that doesn't exist
             let invalid_pool_id = sui::object::id_from_address(@0x1234567890abcdef);
-            std::vector::push_back(&mut pool_ids, invalid_pool_id);
-            let result = factory::fetch_pools(&pools, pool_ids, 1);
+            let result = factory::fetch_pools(&pools, option::some(invalid_pool_id), 1);
             assert!(std::vector::length(&result) == 0, 1);
             
             test_scenario::return_shared(pools);

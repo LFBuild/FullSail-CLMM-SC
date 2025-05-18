@@ -22,26 +22,25 @@ module clmm_pool::pool {
     const Q64: u128 = 18446744073709551616;
 
     // Error codes for the pool module
-    const EZeroAmount: u64 = 0;
-    const EInsufficientLiquidity: u64 = 1;
+    const EZeroAmount: u64 = 923603470923486023;
+    const EInsufficientLiquidity: u64 = 934264306820934862;
     const ENotOwner: u64 = 9843325239567326443;
-    const EZeroLiquidity: u64 = 3;
-    const EInsufficientAmount: u64 = 5;
-    const EAmountInOverflow: u64 = 6;
-    const EAmountOutOverflow: u64 = 7;
-    const EFeeAmountOverflow: u64 = 8;
-    const EInvalidFeeRate: u64 = 9;
-    const EInvalidPriceLimit: u64 = 11;
-    const EPoolIdMismatch: u64 = 12;
-    const EPoolPaused: u64 = 13;
-    const EInvalidPoolOrPartnerId: u64 = 14;
-    const EPartnerIdMismatch: u64 = 15;
-    const EInvalidRefFeeRate: u64 = 16;
-    const ERewarderIndexNotFound: u64 = 17;
-    const EZeroOutputAmount: u64 = 18;
-    const EInvalidTick: u64 = 19;
-    const ENextTickNotFound: u64 = 20;
-    const EInvalidRefFeeAmount: u64 = 21;
+    const EZeroLiquidity: u64 = 932860927360234786;
+    const EInsufficientAmount: u64 = 923946802368230946;
+    const EAmountInOverflow: u64 = 928346890236709234;
+    const EAmountOutOverflow: u64 = 932847098437837467;
+    const EFeeAmountOverflow: u64 = 986092346024366377;
+    const EInvalidFeeRate: u64 = 923949369432090349;
+    const EInvalidPriceLimit: u64 = 923968203463984585;
+    const EPoolIdMismatch: u64 = 983406230673426324;
+    const EPoolPaused: u64 = 928340672346982340;
+    const EInvalidPoolOrPartnerId: u64 = 923860238604780344;
+    const EPartnerIdMismatch: u64 = 928346702740340762;
+    const EInvalidRefFeeRate: u64 = 943963409693460349;
+    const ERewarderIndexNotFound: u64 = 983960239692604363;
+    const EZeroOutputAmount: u64 = 934962834703470457;
+    const ENextTickNotFound: u64 = 929345720697230670;
+    const EInvalidRefFeeAmount: u64 = 920792045376347233;
     const EPartnerIdNotEmpty: u64 = 920354934523526751;
     const EPositionPoolIdMismatch: u64 = 922337380638130175;
     const EInvalidTickRange: u64 = 922337894745715507;
@@ -442,6 +441,96 @@ module clmm_pool::pool {
         new_fee_rate: u64,
     }
 
+    /// Event emitted when the position URL is updated.
+    /// 
+    /// # Fields
+    /// * `pool` - ID of the pool
+    /// * `new_url` - New URL for the position
+    public struct UpdatePoolUrlEvent has copy, drop, store {
+        pool: sui::object::ID,
+        new_url: std::string::String,
+    }
+
+    /// Event emitted when the fullsail distribution gauge is initialized.
+    /// 
+    /// # Fields
+    /// * `pool_id` - ID of the pool
+    /// * `gauge_id` - ID of the gauge
+    public struct InitFullsailDistributionGaugeEvent has copy, drop, store {
+        pool_id: sui::object::ID,
+        gauge_id: sui::object::ID,
+    }
+
+    /// Event emitted when the fullsail distribution reward is synced.
+    /// 
+    /// # Fields
+    /// * `pool_id` - ID of the pool
+    /// * `gauge_id` - ID of the gauge
+    /// * `distribution_rate` - Distribution rate
+    /// * `distribution_reserve` - Distribution reserve
+    /// * `period_finish` - Period finish
+    /// * `rollover` - Rollover
+    public struct SyncFullsailDistributionRewardEvent has copy, drop, store {
+        pool_id: sui::object::ID,
+        gauge_id: sui::object::ID,
+        distribution_rate: u128,
+        distribution_reserve: u64,
+        period_finish: u64,
+        rollover: u64
+    }
+
+    /// Event emitted when the pool is paused.
+    /// 
+    /// # Fields
+    /// * `pool_id` - ID of the pool
+    public struct PausePoolEvent has copy, drop, store {
+        pool_id: sui::object::ID,
+    }
+
+    /// Event emitted when the pool is unpaused.
+    /// 
+    /// # Fields
+    /// * `pool_id` - ID of the pool
+    public struct UnpausePoolEvent has copy, drop, store {
+        pool_id: sui::object::ID,
+    }
+
+    /// Event emitted when the fee growth global is updated.
+    /// 
+    /// # Fields
+    /// * `pool_id` - ID of the pool
+    /// * `fee_growth_global_a` - Fee growth global for token A
+    /// * `fee_growth_global_b` - Fee growth global for token B
+    public struct UpdateFeeGrowthGlobalEvent has copy, drop, store {
+        pool_id: sui::object::ID,
+        fee_growth_global_a: u128,
+        fee_growth_global_b: u128,
+    }
+
+    /// Event emitted when the fullsail distribution growth global is updated.
+    /// 
+    /// # Fields
+    /// * `pool_id` - ID of the pool
+    /// * `growth_global` - Growth global
+    /// * `reserve` - Reserve
+    /// * `rollover` - Rollover
+    public struct UpdateFullsailDistributionGrowthGlobalEvent has copy, drop, store {
+        pool_id: sui::object::ID,
+        growth_global: u128,
+        reserve: u64,
+        rollover: u64,
+    }
+
+    /// Event emitted when the fullsail distribution staked liquidity is updated.
+    /// 
+    /// # Fields
+    /// * `pool_id` - ID of the pool
+    /// * `staked_liquidity` - Staked liquidity
+    public struct UpdateFullsailDistributionStakedLiquidityEvent has copy, drop, store {
+        pool_id: sui::object::ID,
+        staked_liquidity: u128,
+    }
+
     /// Creates a new liquidity pool with the specified parameters.
     /// This function initializes all the necessary components of a pool including
     /// tick management, reward distribution, and position tracking.
@@ -519,67 +608,6 @@ module clmm_pool::pool {
         }
     }
     
-    /// Calculates the amount of tokens required for a given liquidity amount within a price range.
-    /// This function handles three different scenarios based on the current tick position:
-    /// 1. Current tick below the lower tick
-    /// 2. Current tick between lower and upper ticks
-    /// 3. Current tick above the upper tick
-    ///
-    /// # Arguments
-    /// * `tick_lower` - The lower tick of the price range
-    /// * `tick_upper` - The upper tick of the price range
-    /// * `current_tick` - The current tick of the pool
-    /// * `current_sqrt_price` - The current square root price
-    /// * `liquidity` - The amount of liquidity to calculate for
-    /// * `round_up` - Whether to round up the calculated amounts
-    ///
-    /// # Returns
-    /// A tuple containing (amount_a, amount_b) where:
-    /// * `amount_a` - The amount of token A required
-    /// * `amount_b` - The amount of token B required
-    public fun get_amount_by_liquidity(
-        tick_lower: integer_mate::i32::I32,
-        tick_upper: integer_mate::i32::I32,
-        current_tick: integer_mate::i32::I32,
-        current_sqrt_price: u128,
-        liquidity: u128,
-        round_up: bool
-    ): (u64, u64) {
-        if (liquidity == 0) {
-            return (0, 0)
-        };
-        if (integer_mate::i32::lt(current_tick, tick_lower)) {
-            (clmm_pool::clmm_math::get_delta_a(
-                clmm_pool::tick_math::get_sqrt_price_at_tick(tick_lower),
-                clmm_pool::tick_math::get_sqrt_price_at_tick(tick_upper),
-                liquidity,
-                round_up
-            ), 0)
-        } else {
-            let (amount_a, amount_b) = if (integer_mate::i32::lt(current_tick, tick_upper)) {
-                (clmm_pool::clmm_math::get_delta_a(
-                    current_sqrt_price,
-                    clmm_pool::tick_math::get_sqrt_price_at_tick(tick_upper),
-                    liquidity,
-                    round_up
-                ), clmm_pool::clmm_math::get_delta_b(
-                    clmm_pool::tick_math::get_sqrt_price_at_tick(tick_lower),
-                    current_sqrt_price,
-                    liquidity,
-                    round_up
-                ))
-            } else {
-                (0, clmm_pool::clmm_math::get_delta_b(
-                    clmm_pool::tick_math::get_sqrt_price_at_tick(tick_lower),
-                    clmm_pool::tick_math::get_sqrt_price_at_tick(tick_upper),
-                    liquidity,
-                    round_up
-                ))
-            };
-            (amount_a, amount_b)
-        }
-    }
-    
     /// Returns the fee rate for unstaked liquidity in the pool.
     /// This rate is applied to liquidity that is not staked in a gauge.
     ///
@@ -640,17 +668,17 @@ module clmm_pool::pool {
     ///
     /// # Arguments
     /// * `pool` - The pool containing the positions
-    /// * `position_ids` - Vector of position IDs to fetch information for
+    /// * `pre_start_position_id` - Optional position ID after which to start fetching. If None, starts from the beginning
     /// * `limit` - Maximum number of positions to fetch
     ///
     /// # Returns
     /// Vector of PositionInfo structs for the requested positions
     public fun fetch_positions<CoinTypeA, CoinTypeB>(
         pool: &Pool<CoinTypeA, CoinTypeB>,
-        position_ids: vector<sui::object::ID>,
+        pre_start_position_id: Option<sui::object::ID>,
         limit: u64
     ): vector<clmm_pool::position::PositionInfo> {
-        clmm_pool::position::fetch_positions(&pool.position_manager, position_ids, limit)
+        clmm_pool::position::fetch_positions(&pool.position_manager, pre_start_position_id, limit)
     }
 
     /// Checks if a position exists in the pool.
@@ -804,21 +832,21 @@ module clmm_pool::pool {
         clmm_pool::tick::borrow_tick(&pool.tick_manager, tick_index)
     }
 
-    /// Fetches multiple ticks from the pool based on their indexes.
+    /// Fetches multiple ticks from the pool with pagination
     ///
     /// # Arguments
     /// * `pool` - The pool containing the ticks
-    /// * `tick_indexes` - Vector of tick indexes to fetch
+    /// * `pre_start_tick_index` - Option to tick index to start after (if None, starts from first tick)
     /// * `limit` - Maximum number of ticks to fetch
     ///
     /// # Returns
     /// Vector of Tick structs for the requested indexes
     public fun fetch_ticks<CoinTypeA, CoinTypeB>(
         pool: &Pool<CoinTypeA, CoinTypeB>, 
-        tick_indexes: vector<u32>,
+        pre_start_tick_index: Option<u32>,
         limit: u64
     ): vector<clmm_pool::tick::Tick> {
-        clmm_pool::tick::fetch_ticks(&pool.tick_manager, tick_indexes, limit)
+        clmm_pool::tick::fetch_ticks(&pool.tick_manager, pre_start_tick_index, limit)
     }
 
     /// Returns the index of the pool in the system.
@@ -1208,6 +1236,7 @@ module clmm_pool::pool {
         position_id: sui::object::ID,
         clock: &sui::clock::Clock
     ): u64 {
+        clmm_pool::config::checked_package_version(global_config);
         let mut rewarder_idx = clmm_pool::rewarder::rewarder_index<RewardCoinType>(&pool.rewarder_manager);
         assert!(std::option::is_some<u64>(&rewarder_idx), ERewarderIndexNotFound);
         let rewards = calculate_and_update_rewards<CoinTypeA, CoinTypeB>(global_config, vault,pool, position_id, clock);
@@ -1324,131 +1353,17 @@ module clmm_pool::pool {
         by_amount_in: bool,
         amount: u64
     ): CalculatedSwapResult {
-        let mut current_sqrt_price = pool.current_sqrt_price;
-        let mut current_liquidity = pool.liquidity;
-        let mut staked_liquidity = pool.fullsail_distribution_staked_liquidity;
-        let mut swap_result = default_swap_result();
-        let mut remaining_amount = amount;
-        let mut next_tick = clmm_pool::tick::first_score_for_swap(&pool.tick_manager, pool.current_tick_index, a2b);
-        let mut calculated_result = CalculatedSwapResult {
-            amount_in: 0,
-            amount_out: 0,
-            fee_amount: 0,
-            fee_rate: pool.fee_rate,
-            ref_fee_amount: 0,
-            gauge_fee_amount: 0,
-            protocol_fee_amount: 0,
-            after_sqrt_price: pool.current_sqrt_price,
-            is_exceed: false,
-            step_results: std::vector::empty<SwapStepResult>(),
-        };
-        let unstaked_fee_rate = if (pool.unstaked_liquidity_fee_rate == clmm_pool::config::default_unstaked_fee_rate()) {
-            clmm_pool::config::unstaked_liquidity_fee_rate(global_config)
-        } else {
-            pool.unstaked_liquidity_fee_rate
-        };
-        while (remaining_amount > 0) {
-            if (move_stl::option_u64::is_none(&next_tick)) {
-                calculated_result.is_exceed = true;
-                break
-            };
-            let (tick, next_tick_score) = clmm_pool::tick::borrow_tick_for_swap(
-                &pool.tick_manager,
-                move_stl::option_u64::borrow(&next_tick),
-                a2b
-            );
-            next_tick = next_tick_score;
-            let target_sqrt_price = clmm_pool::tick::sqrt_price(tick);
-            let (amount_in, amount_out, next_sqrt_price, fee_amount) = clmm_pool::clmm_math::compute_swap_step(
-                current_sqrt_price,
-                target_sqrt_price,
-                current_liquidity,
-                remaining_amount,
-                pool.fee_rate,
-                a2b,
-                by_amount_in
-            );
-            if (amount_in != 0 || fee_amount != 0) {
-                let new_remaining_amount = if (by_amount_in) {
-                    let after_amount_in = check_remainer_amount_sub(remaining_amount, amount_in);
-                    check_remainer_amount_sub(after_amount_in, fee_amount)
-                } else {
-                    check_remainer_amount_sub(remaining_amount, amount_out)
-                };
-                remaining_amount = new_remaining_amount;
-                let protocol_fee = integer_mate::full_math_u64::mul_div_ceil(
-                    fee_amount,
-                    clmm_pool::config::protocol_fee_rate(global_config),
-                    clmm_pool::config::protocol_fee_rate_denom()
-                );
-                let (_, gauge_fee) = calculate_fees<CoinTypeA, CoinTypeB>(
-                    pool,
-                    fee_amount - protocol_fee,
-                    pool.liquidity,
-                    pool.fullsail_distribution_staked_liquidity,
-                    unstaked_fee_rate
-                );
-                update_swap_result(&mut swap_result, amount_in, amount_out, fee_amount, protocol_fee, 0, gauge_fee);
-            };
-            let step_result = SwapStepResult {
-                current_sqrt_price,
-                target_sqrt_price,
-                current_liquidity,
-                amount_in,
-                amount_out,
-                fee_amount,
-                remainder_amount: remaining_amount,
-            };
-            std::vector::push_back<SwapStepResult>(&mut calculated_result.step_results, step_result);
-            if (next_sqrt_price == target_sqrt_price) {
-                current_sqrt_price = target_sqrt_price;
-                let (liquidity_delta, staked_liquidity_delta) = if (a2b) {
-                    (integer_mate::i128::neg(clmm_pool::tick::liquidity_net(tick)), integer_mate::i128::neg(
-                        clmm_pool::tick::fullsail_distribution_staked_liquidity_net(tick)
-                    ))
-                } else {
-                    (clmm_pool::tick::liquidity_net(tick), clmm_pool::tick::fullsail_distribution_staked_liquidity_net(tick))
-                };
-                let liquidity_abs = integer_mate::i128::abs_u128(liquidity_delta);
-                let staked_liquidity_abs = integer_mate::i128::abs_u128(staked_liquidity_delta);
-                if (!integer_mate::i128::is_neg(liquidity_delta)) {
-                    assert!(integer_mate::math_u128::add_check(current_liquidity, liquidity_abs), EInsufficientLiquidity);
-                    current_liquidity = current_liquidity + liquidity_abs;
-                } else {
-                    assert!(current_liquidity >= liquidity_abs, EInsufficientLiquidity);
-                    current_liquidity = current_liquidity - liquidity_abs;
-                };
-                if (!integer_mate::i128::is_neg(staked_liquidity_delta)) {
-                    assert!(integer_mate::math_u128::add_check(staked_liquidity, staked_liquidity_abs), EInsufficientStakedLiquidity);
-                    staked_liquidity = staked_liquidity + staked_liquidity_abs;
-                    continue
-                };
-                assert!(staked_liquidity >= staked_liquidity_abs, EInsufficientStakedLiquidity);
-                staked_liquidity = staked_liquidity - staked_liquidity_abs;
-                continue
-            };
-            current_sqrt_price = next_sqrt_price;
-        };
-        calculated_result.amount_in = swap_result.amount_in;
-        calculated_result.amount_out = swap_result.amount_out;
-        calculated_result.fee_amount = swap_result.fee_amount;
-        calculated_result.gauge_fee_amount = swap_result.gauge_fee_amount;
-        calculated_result.protocol_fee_amount = swap_result.protocol_fee_amount;
-        calculated_result.after_sqrt_price = current_sqrt_price;
-        calculated_result
-    }
+        clmm_pool::config::checked_package_version(global_config);
 
-    /// Returns a reference to the vector of swap step results from the calculated swap result.
-    /// Each step result contains detailed information about a single step in the swap calculation,
-    /// including prices, liquidity, amounts, and fees.
-    ///
-    /// # Arguments
-    /// * `calculated_swap_result` - Reference to the CalculatedSwapResult containing the swap simulation data
-    ///
-    /// # Returns
-    /// A reference to the vector of SwapStepResult structs containing detailed information about each swap step
-    public fun calculate_swap_result_step_results(calculated_swap_result: &CalculatedSwapResult): &vector<SwapStepResult> {
-        &calculated_swap_result.step_results
+        calculate_swap_result_internal(
+            global_config,
+            pool,
+            a2b,
+            by_amount_in,
+            amount,
+            false,
+            0
+        )
     }
 
     /// Calculates the expected result of a swap operation with partner fee rate.
@@ -1481,6 +1396,55 @@ module clmm_pool::pool {
         a2b: bool,
         by_amount_in: bool,
         amount: u64,
+        ref_fee_rate: u64
+    ): CalculatedSwapResult {
+        clmm_pool::config::checked_package_version(global_config);
+        
+        calculate_swap_result_internal(
+            global_config,
+            pool,
+            a2b,
+            by_amount_in,
+            amount,
+            true,
+            ref_fee_rate
+        )
+    }
+
+    /// Internal function that calculates the expected result of a swap operation.
+    /// This function handles the core swap calculation logic, including fee distribution,
+    /// liquidity updates, and price movement across multiple ticks.
+    ///
+    /// # Arguments
+    /// * `global_config` - Reference to the global configuration containing protocol parameters
+    /// * `pool` - Reference to the pool containing the current state
+    /// * `a2b` - Boolean indicating the swap direction (true for A to B, false for B to A)
+    /// * `by_amount_in` - Boolean indicating whether the amount parameter represents input or output amount
+    /// * `amount` - The amount to swap (either input or output amount based on by_amount_in)
+    /// * `with_partner` - Boolean indicating whether to include partner fee calculations
+    /// * `ref_fee_rate` - The partner fee rate in basis points
+    ///
+    /// # Returns
+    /// A CalculatedSwapResult struct containing:
+    /// * Input and output amounts
+    /// * Various fee amounts (total, gauge, protocol, referral)
+    /// * Final price after the swap
+    /// * Whether the swap would exceed available liquidity
+    /// * Detailed step-by-step results of the swap calculation
+    ///
+    /// # Aborts
+    /// * If liquidity calculations would overflow
+    /// * If fee calculations would overflow
+    /// * If price calculations would overflow
+    /// * If there is insufficient liquidity for the swap
+    /// * If there is insufficient staked liquidity for the swap
+    fun calculate_swap_result_internal<CoinTypeA, CoinTypeB>(
+        global_config: &clmm_pool::config::GlobalConfig,
+        pool: &Pool<CoinTypeA, CoinTypeB>,
+        a2b: bool,
+        by_amount_in: bool,
+        amount: u64,
+        with_partner: bool,
         ref_fee_rate: u64
     ): CalculatedSwapResult {
         let mut current_sqrt_price = pool.current_sqrt_price;
@@ -1535,33 +1499,52 @@ module clmm_pool::pool {
                     check_remainer_amount_sub(remaining_amount, amount_out)
                 };
                 remaining_amount = new_remaining_amount;
-                let ref_fee = integer_mate::full_math_u64::mul_div_ceil(
-                    fee_amount,
-                    ref_fee_rate,
-                    clmm_pool::config::protocol_fee_rate_denom()
-                );
-                let remaining_fee = fee_amount - ref_fee;
+
                 let mut gauge_fee = 0;
                 let mut protocol_fee = 0;
-                if (remaining_fee > 0) {
-                    let protocol_fee_amount = integer_mate::full_math_u64::mul_div_ceil(
-                        remaining_fee,
+                let mut ref_fee = 0;
+
+                if (with_partner) {
+                    ref_fee = integer_mate::full_math_u64::mul_div_ceil(
+                        fee_amount,
+                        ref_fee_rate,
+                        clmm_pool::config::protocol_fee_rate_denom()
+                    );
+                    let remaining_fee = fee_amount - ref_fee;
+                    if (remaining_fee > 0) {
+                        let protocol_fee_amount = integer_mate::full_math_u64::mul_div_ceil(
+                            remaining_fee,
+                            clmm_pool::config::protocol_fee_rate(global_config),
+                            clmm_pool::config::protocol_fee_rate_denom()
+                        );
+                        protocol_fee = protocol_fee_amount;
+                        let fee_after_protocol = remaining_fee - protocol_fee_amount;
+                        if (fee_after_protocol > 0) {
+                            let (_, gauge_fee_amount) = calculate_fees<CoinTypeA, CoinTypeB>(
+                                pool,
+                                fee_after_protocol,
+                                pool.liquidity,
+                                pool.fullsail_distribution_staked_liquidity,
+                                unstaked_fee_rate
+                            );
+                            gauge_fee = gauge_fee_amount;
+                        };
+                    };
+                } else {
+                    let protocol_fee = integer_mate::full_math_u64::mul_div_ceil(
+                        fee_amount,
                         clmm_pool::config::protocol_fee_rate(global_config),
                         clmm_pool::config::protocol_fee_rate_denom()
                     );
-                    protocol_fee = protocol_fee_amount;
-                    let fee_after_protocol = remaining_fee - protocol_fee_amount;
-                    if (fee_after_protocol > 0) {
-                        let (_, gauge_fee_amount) = calculate_fees<CoinTypeA, CoinTypeB>(
-                            pool,
-                            fee_after_protocol,
-                            pool.liquidity,
-                            pool.fullsail_distribution_staked_liquidity,
-                            unstaked_fee_rate
-                        );
-                        gauge_fee = gauge_fee_amount;
-                    };
+                    (_, gauge_fee) = calculate_fees<CoinTypeA, CoinTypeB>(
+                        pool,
+                        fee_amount - protocol_fee,
+                        pool.liquidity,
+                        pool.fullsail_distribution_staked_liquidity,
+                        unstaked_fee_rate
+                    );
                 };
+        
                 update_swap_result(&mut swap_result, amount_in, amount_out, fee_amount, protocol_fee, ref_fee, gauge_fee);
             };
             let step_result = SwapStepResult {
@@ -1610,7 +1593,21 @@ module clmm_pool::pool {
         calculated_result.protocol_fee_amount = swap_result.protocol_fee_amount;
         calculated_result.ref_fee_amount = swap_result.ref_fee_amount;
         calculated_result.after_sqrt_price = current_sqrt_price;
+
         calculated_result
+    }
+
+    /// Returns a reference to the vector of swap step results from the calculated swap result.
+    /// Each step result contains detailed information about a single step in the swap calculation,
+    /// including prices, liquidity, amounts, and fees.
+    ///
+    /// # Arguments
+    /// * `calculated_swap_result` - Reference to the CalculatedSwapResult containing the swap simulation data
+    ///
+    /// # Returns
+    /// A reference to the vector of SwapStepResult structs containing detailed information about each swap step
+    public fun calculate_swap_result_step_results(calculated_swap_result: &CalculatedSwapResult): &vector<SwapStepResult> {
+        &calculated_swap_result.step_results
     }
 
     /// Returns the square root of the price after the simulated swap.
@@ -2395,85 +2392,6 @@ module clmm_pool::pool {
         )
     }
 
-    /// Calculates the liquidity and token amounts for a given input amount.
-    /// This function determines the liquidity and corresponding token amounts needed
-    /// for a position within a specified price range.
-    ///
-    /// # Arguments
-    /// * `tick_lower` - The lower tick of the price range
-    /// * `tick_upper` - The upper tick of the price range
-    /// * `current_tick` - The current tick of the pool
-    /// * `current_sqrt_price` - The current square root price of the pool
-    /// * `amount` - The input amount to calculate liquidity for
-    /// * `a2b` - Boolean indicating the direction (true for A to B, false for B to A)
-    ///
-    /// # Returns
-    /// A tuple containing:
-    /// * The calculated liquidity
-    /// * Amount of token A needed
-    /// * Amount of token B needed
-    ///
-    /// # Aborts
-    /// * If current_tick is not within the specified range (error code: EInvalidTick)
-    public fun get_liquidity_from_amount(
-        tick_lower: integer_mate::i32::I32,
-        tick_upper: integer_mate::i32::I32,
-        current_tick: integer_mate::i32::I32,
-        current_sqrt_price: u128,
-        amount: u64,
-        a2b: bool
-    ): (u128, u64, u64) {
-        if (a2b) {
-            let (liquidity_a, amount_b) = if (integer_mate::i32::lt(current_tick, tick_lower)) {
-                (clmm_pool::clmm_math::get_liquidity_from_a(
-                    clmm_pool::tick_math::get_sqrt_price_at_tick(tick_lower),
-                    clmm_pool::tick_math::get_sqrt_price_at_tick(tick_upper),
-                    amount,
-                    false
-                ), 0)
-            } else {
-                assert!(integer_mate::i32::lt(current_tick, tick_upper), EInvalidTick);
-                let liquidity_current = clmm_pool::clmm_math::get_liquidity_from_a(
-                    current_sqrt_price,
-                    clmm_pool::tick_math::get_sqrt_price_at_tick(tick_upper),
-                    amount,
-                    false
-                );
-                (liquidity_current, clmm_pool::clmm_math::get_delta_b(
-                    current_sqrt_price,
-                    clmm_pool::tick_math::get_sqrt_price_at_tick(tick_lower),
-                    liquidity_current,
-                    true
-                ))
-            };
-            (liquidity_a, amount, amount_b)
-        } else {
-            let (liquidity_b, amount_a) = if (integer_mate::i32::gte(current_tick, tick_upper)) {
-                (clmm_pool::clmm_math::get_liquidity_from_b(
-                    clmm_pool::tick_math::get_sqrt_price_at_tick(tick_lower),
-                    clmm_pool::tick_math::get_sqrt_price_at_tick(tick_upper),
-                    amount,
-                    false
-                ), 0)
-            } else {
-                assert!(integer_mate::i32::gte(current_tick, tick_lower), EInvalidTick);
-                let liquidity_current = clmm_pool::clmm_math::get_liquidity_from_b(
-                    clmm_pool::tick_math::get_sqrt_price_at_tick(tick_lower),
-                    current_sqrt_price,
-                    amount,
-                    false
-                );
-                (liquidity_current, clmm_pool::clmm_math::get_delta_a(
-                    current_sqrt_price,
-                    clmm_pool::tick_math::get_sqrt_price_at_tick(tick_upper),
-                    liquidity_current,
-                    true
-                ))
-            };
-            (liquidity_b, amount_a, amount)
-        }
-    }
-
     /// Returns the ID of the fullsail distribution gauger.
     /// This function retrieves the ID of the gauger responsible for fullsail distribution in the pool.
     ///
@@ -2618,13 +2536,13 @@ module clmm_pool::pool {
     /// * Amount of token A in the position
     /// * Amount of token B in the position
     public fun get_position_amounts<CoinTypeA, CoinTypeB>(
-        pool_state: &mut Pool<CoinTypeA, CoinTypeB>,
+        pool_state: &Pool<CoinTypeA, CoinTypeB>,
         position_id: sui::object::ID
     ): (u64, u64) {
         clmm_pool::position::validate_position_exists(&pool_state.position_manager, position_id);
         let current_position = clmm_pool::position::borrow_position_info(&pool_state.position_manager, position_id);
         let (tick_lower, tick_upper) = clmm_pool::position::info_tick_range(current_position);
-        get_amount_by_liquidity(
+        clmm_pool::clmm_math::get_amount_by_liquidity(
             tick_lower,
             tick_upper, 
             pool_state.current_tick_index,
@@ -2763,6 +2681,7 @@ module clmm_pool::pool {
         pool: &mut Pool<CoinTypeA, CoinTypeB>,
         gauge_cap: &gauge_cap::gauge_cap::GaugeCap
     ) {
+        assert!(!pool.is_pause, EPoolPaused);
         assert!(
             gauge_cap::gauge_cap::get_pool_id(gauge_cap) == sui::object::id<Pool<CoinTypeA, CoinTypeB>>(pool),
             EInvalidPoolOrPartnerId
@@ -2771,6 +2690,12 @@ module clmm_pool::pool {
             &mut pool.fullsail_distribution_gauger_id,
             gauge_cap::gauge_cap::get_gauge_id(gauge_cap)
         );
+
+        let event = InitFullsailDistributionGaugeEvent {
+            pool_id: sui::object::id<Pool<CoinTypeA, CoinTypeB>>(pool),
+            gauge_id: gauge_cap::gauge_cap::get_gauge_id(gauge_cap),
+        };
+        sui::event::emit<InitFullsailDistributionGaugeEvent>(event);
     }
 
     /// Initializes a new rewarder for the pool.
@@ -2792,6 +2717,7 @@ module clmm_pool::pool {
         assert!(!pool.is_pause, EPoolPaused);
         clmm_pool::config::check_rewarder_manager_role(global_config, sui::tx_context::sender(ctx));
         clmm_pool::rewarder::add_rewarder<RewardCoinType>(&mut pool.rewarder_manager);
+        
         let event = AddRewarderEvent {
             pool: sui::object::id<Pool<CoinTypeA, CoinTypeB>>(pool),
             rewarder_type: std::type_name::get<RewardCoinType>(),
@@ -2864,6 +2790,11 @@ module clmm_pool::pool {
         clmm_pool::config::check_pool_manager_role(global_config, sui::tx_context::sender(ctx));
         assert!(!pool.is_pause, EPoolAlreadyPaused);
         pool.is_pause = true;
+
+        let event = PausePoolEvent {
+            pool_id: sui::object::id<Pool<CoinTypeA, CoinTypeB>>(pool),
+        };
+        sui::event::emit<PausePoolEvent>(event);
     }
 
     /// Returns the fee amounts for both tokens in a pool fee structure.
@@ -2974,7 +2905,7 @@ module clmm_pool::pool {
             pool.liquidity = pool.liquidity - liquidity;
         };
 
-        let (amount_a, amount_b) = get_amount_by_liquidity(
+        let (amount_a, amount_b) = clmm_pool::clmm_math::get_amount_by_liquidity(
             tick_lower,
             tick_upper,
             pool.current_tick_index,
@@ -3586,6 +3517,16 @@ module clmm_pool::pool {
         pool.fullsail_distribution_reserve = distribution_reserve;
         pool.fullsail_distribution_period_finish = period_finish;
         pool.fullsail_distribution_rollover = 0;
+        
+        let event = SyncFullsailDistributionRewardEvent {
+            pool_id: sui::object::id<Pool<CoinTypeA, CoinTypeB>>(pool),
+            gauge_id: gauge_cap::gauge_cap::get_gauge_id(gauge_cap),
+            distribution_rate: pool.fullsail_distribution_rate,
+            distribution_reserve: pool.fullsail_distribution_reserve,
+            period_finish: pool.fullsail_distribution_period_finish,
+            rollover: pool.fullsail_distribution_rollover
+        };
+        sui::event::emit<SyncFullsailDistributionRewardEvent>(event);
     }
 
     /// Returns a reference to the pool's tick manager.
@@ -3635,6 +3576,11 @@ module clmm_pool::pool {
         clmm_pool::config::check_pool_manager_role(global_config, sui::tx_context::sender(ctx));
         assert!(pool.is_pause, EPoolNotPaused);
         pool.is_pause = false;
+
+        let event = UnpausePoolEvent {
+            pool_id: sui::object::id<Pool<CoinTypeA, CoinTypeB>>(pool),
+        };
+        sui::event::emit<UnpausePoolEvent>(event);
     }
 
     /// Removes liquidity from the fullsail distribution system, reducing the amount of liquidity participating in reward distribution.
@@ -3693,6 +3639,13 @@ module clmm_pool::pool {
                 ((fee_after_protocol as u128) << 64) / pool.liquidity
             );
         };
+
+        let event = UpdateFeeGrowthGlobalEvent {
+            pool_id: sui::object::id<Pool<CoinTypeA, CoinTypeB>>(pool),
+            fee_growth_global_a: pool.fee_growth_global_a,
+            fee_growth_global_b: pool.fee_growth_global_b,
+        };
+        sui::event::emit<UpdateFeeGrowthGlobalEvent>(event);
     }
 
     /// Updates the fee rate for the pool. This function can only be called by an account with pool manager role.
@@ -3723,16 +3676,17 @@ module clmm_pool::pool {
     ) {
         clmm_pool::config::checked_package_version(global_config);
         assert!(!pool.is_pause, EPoolPaused);
-        if (fee_rate > clmm_pool::config::max_fee_rate()) {
-            abort EInvalidFeeRate
-        };
+        assert!(fee_rate <= clmm_pool::config::max_fee_rate(), EInvalidFeeRate);
+        assert!(fee_rate != pool.fee_rate, EInvalidFeeRate);
         clmm_pool::config::check_pool_manager_role(global_config, sui::tx_context::sender(ctx));
-        pool.fee_rate = fee_rate;
         let event = UpdateFeeRateEvent {
             pool: sui::object::id<Pool<CoinTypeA, CoinTypeB>>(pool),
             old_fee_rate: pool.fee_rate,
             new_fee_rate: fee_rate,
         };
+
+        pool.fee_rate = fee_rate;
+
         sui::event::emit<UpdateFeeRateEvent>(event);
     }
 
@@ -3795,9 +3749,19 @@ module clmm_pool::pool {
                     pool.fullsail_distribution_rollover = pool.fullsail_distribution_rollover + actual_distribution;
                 };
                 distributed_amount = actual_distribution;
+
+                let event = UpdateFullsailDistributionGrowthGlobalEvent {
+                    pool_id: sui::object::id<Pool<CoinTypeA, CoinTypeB>>(pool),
+                    growth_global: pool.fullsail_distribution_growth_global,
+                    reserve: pool.fullsail_distribution_reserve,
+                    rollover: pool.fullsail_distribution_rollover
+                };
+                sui::event::emit<UpdateFullsailDistributionGrowthGlobalEvent>(event);
             };
             pool.fullsail_distribution_last_updated = current_timestamp;
         };
+
+
         distributed_amount
     }
     
@@ -3840,6 +3804,12 @@ module clmm_pool::pool {
             pool.fullsail_distribution_staked_liquidity = integer_mate::i128::as_u128(
                 integer_mate::i128::add(integer_mate::i128::from(pool.fullsail_distribution_staked_liquidity), liquidity_delta)
             );
+
+            let event = UpdateFullsailDistributionStakedLiquidityEvent {
+                pool_id: sui::object::id<Pool<CoinTypeA, CoinTypeB>>(pool),
+                staked_liquidity: pool.fullsail_distribution_staked_liquidity,
+            };
+            sui::event::emit<UpdateFullsailDistributionStakedLiquidityEvent>(event);
         };
         let tick_lower_opt = clmm_pool::tick::try_borrow_tick(&pool.tick_manager, tick_lower);
         let tick_upper_opt = clmm_pool::tick::try_borrow_tick(&pool.tick_manager, tick_upper);
@@ -3851,7 +3821,7 @@ module clmm_pool::pool {
         };
     }
 
-    /// Updates the URL associated with the pool position.
+    /// Updates the URL associated with the pool.
     /// This function can only be called by an account with pool manager role.
     /// 
     /// # Arguments
@@ -3864,7 +3834,7 @@ module clmm_pool::pool {
     /// * If the pool is paused (error code: EPoolPaused)
     /// * If the caller does not have pool manager role
     /// * If the package version check fails
-    public fun update_position_url<CoinTypeA, CoinTypeB>(
+    public fun update_pool_url<CoinTypeA, CoinTypeB>(
         global_config: &clmm_pool::config::GlobalConfig,
         pool: &mut Pool<CoinTypeA, CoinTypeB>,
         new_url: std::string::String,
@@ -3874,6 +3844,13 @@ module clmm_pool::pool {
         assert!(!pool.is_pause, EPoolPaused);
         clmm_pool::config::check_pool_manager_role(global_config, sui::tx_context::sender(ctx));
         pool.url = new_url;
+
+        let event = UpdatePoolUrlEvent {
+            pool: sui::object::id<Pool<CoinTypeA, CoinTypeB>>(pool),
+            new_url: new_url,
+        };
+
+        sui::event::emit<UpdatePoolUrlEvent>(event);
     }
 
     /// Updates the swap result structure with new amounts and fees from a swap step.
@@ -3949,12 +3926,14 @@ module clmm_pool::pool {
         );
         assert!(new_fee_rate != pool.unstaked_liquidity_fee_rate, EInvalidFeeRate);
         clmm_pool::config::check_pool_manager_role(global_config, sui::tx_context::sender(ctx));
-        pool.unstaked_liquidity_fee_rate = new_fee_rate;
         let event = UpdateUnstakedLiquidityFeeRateEvent {
             pool: sui::object::id<Pool<CoinTypeA, CoinTypeB>>(pool),
             old_fee_rate: pool.unstaked_liquidity_fee_rate,
             new_fee_rate: new_fee_rate,
         };
+
+        pool.unstaked_liquidity_fee_rate = new_fee_rate;
+
         sui::event::emit<UpdateUnstakedLiquidityFeeRateEvent>(event);
     }
 

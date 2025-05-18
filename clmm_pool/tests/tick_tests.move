@@ -288,7 +288,7 @@ module clmm_pool::tick_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 1)]
+    #[expected_failure(abort_code = tick::EInsufficientLiquidity)]
     fun test_decrease_liquidity_too_much() {
         let mut scenario = test_scenario::begin(@0x1);
         {
@@ -800,7 +800,7 @@ module clmm_pool::tick_tests {
             );
 
             // Get all ticks without specifying a starting index
-            let ticks = tick::fetch_ticks(tick_manager, vector::empty<u32>(), 10);
+            let ticks = tick::fetch_ticks(tick_manager, option::none(), 10);
             
             // Check that 2 ticks were obtained (lower and upper)
             assert!(vector::length(&ticks) == 2, 32);
@@ -872,7 +872,7 @@ module clmm_pool::tick_tests {
             assert!(std::option::is_some(&upper_tick), 37);
 
             // Get all ticks without specifying a starting index
-            let all_ticks = tick::fetch_ticks(tick_manager, vector::empty<u32>(), 10);
+            let all_ticks = tick::fetch_ticks(tick_manager, option::none(), 10); 
             let all_ticks_length = vector::length(&all_ticks);
             assert!(all_ticks_length > 0, 38);
 
@@ -881,9 +881,7 @@ module clmm_pool::tick_tests {
             assert!(tick::index(first_all_tick) == tick_lower, 39);
 
             // Get ticks starting from the middle
-            let mut start_indices = vector::empty<u32>();
-            vector::push_back(&mut start_indices, i32::as_u32(tick_middle));
-            let ticks = tick::fetch_ticks(tick_manager, start_indices, 10);
+            let ticks = tick::fetch_ticks(tick_manager, option::some(i32::as_u32(tick_middle)), 10);
             
             // Check the number of ticks obtained
             let ticks_length = vector::length(&ticks);
@@ -956,7 +954,7 @@ module clmm_pool::tick_tests {
             );
 
             // Get only one tick
-            let ticks = tick::fetch_ticks(tick_manager, vector::empty<u32>(), 1);
+            let ticks = tick::fetch_ticks(tick_manager, option::none(), 1);
             
             // Check that only one tick was obtained
             assert!(vector::length(&ticks) == 1, 38);
@@ -1004,9 +1002,7 @@ module clmm_pool::tick_tests {
             );
 
             // Attempt to get ticks starting from a nonexistent index
-            let mut start_indices = vector::empty<u32>();
-            vector::push_back(&mut start_indices, 100); // Nonexistent index
-            let ticks = tick::fetch_ticks(tick_manager, start_indices, 10);
+            let ticks = tick::fetch_ticks(tick_manager, option::some(100), 10);
             
             // Check that an empty vector was obtained
             assert!(vector::is_empty(&ticks), 40);
@@ -2160,7 +2156,7 @@ module clmm_pool::tick_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 1)]
+    #[expected_failure(abort_code = tick::EInsufficientLiquidity)]
     fun test_update_by_liquidity_remove_more_than_available() {
         let mut scenario = test_scenario::begin(@0x1);
         let mut helper = TickTestHelper {

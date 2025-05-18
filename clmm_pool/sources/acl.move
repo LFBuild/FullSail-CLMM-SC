@@ -34,7 +34,7 @@ module clmm_pool::acl {
     const REWARDER_MANAGER: u8 = 4;
 
     /// Error codes for the ACL module
-    const EInvalidRole: u64 = 1;
+    const EInvalidRole: u64 = 973452362306456;
 
     /// Structure representing the Access Control List.
     /// Uses a linked table to store address-to-permission mappings.
@@ -100,7 +100,7 @@ module clmm_pool::acl {
     /// * `role` - Role to add (0-127)
     /// 
     /// # Aborts
-    /// * If the role is >= 128 (error code: 1)
+    /// * If the role is >= 128 (error code: EInvalidRole)
     public fun add_role(acl: &mut ACL, member_addr: address, role: u8) {
         assert!(role < 128, EInvalidRole);
         if (move_stl::linked_table::contains<address, u128>(&acl.permissions, member_addr)) {
@@ -162,7 +162,7 @@ module clmm_pool::acl {
     /// True if the member has the specified role, false otherwise
     /// 
     /// # Aborts
-    /// * If the role is >= 128 (error code: 1)
+    /// * If the role is >= 128 (error code: EInvalidRole)
     public fun has_role(acl: &ACL, member_addr: address, role: u8): bool {
         assert!(role < 128, EInvalidRole);
         move_stl::linked_table::contains<address, u128>(
@@ -190,7 +190,7 @@ module clmm_pool::acl {
     /// * `role` - Role to remove (0-127)
     /// 
     /// # Aborts
-    /// * If the role is >= 128 (error code: 1)
+    /// * If the role is >= 128 (error code: EInvalidRole)
     public fun remove_role(acl: &mut ACL, member_addr: address, role: u8) {
         assert!(role < 128, EInvalidRole);
         if (move_stl::linked_table::contains<address, u128>(&acl.permissions, member_addr)) {
