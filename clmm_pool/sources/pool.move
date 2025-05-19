@@ -126,8 +126,8 @@ module clmm_pool::pool {
     /// Structure representing the volume of tokens in USD for the pool.
     /// 
     /// # Fields
-    /// * `volume_usd_coin_a` - Volume of token A in USD
-    /// * `volume_usd_coin_b` - Volume of token B in USD
+    /// * `volume_usd_coin_a` - Volume of token A in USD (Q64.64)
+    /// * `volume_usd_coin_b` - Volume of token B in USD (Q64.64)
     public struct PoolVolume has drop, store {
         volume_usd_coin_a: u128,
         volume_usd_coin_b: u128,
@@ -2420,6 +2420,20 @@ module clmm_pool::pool {
         pool.fullsail_distribution_growth_global
     }
 
+    /// Returns the pool volumes.
+    /// This function calculates the total volumes of token A and token B in the pool.
+    ///
+    /// # Arguments
+    /// * `pool` - Reference to the pool containing the volumes
+    ///
+    /// # Returns
+    /// A tuple containing:
+    /// * Volume of token A in USD (Q64.64)
+    /// * Volume of token B in USD (Q64.64)
+    public fun get_pool_volumes<CoinTypeA, CoinTypeB>(pool: &Pool<CoinTypeA, CoinTypeB>): (u128, u128) {
+        (pool.volume.volume_usd_coin_a, pool.volume.volume_usd_coin_b)
+    }
+
     /// Returns the fullsail distribution growth within a specified tick range.
     /// This function calculates the accumulated fullsail distribution between the specified ticks.
     ///
@@ -2474,6 +2488,18 @@ module clmm_pool::pool {
     /// The fullsail distribution reserve amount
     public fun get_fullsail_distribution_reserve<CoinTypeA, CoinTypeB>(pool: &Pool<CoinTypeA, CoinTypeB>): u64 {
         pool.fullsail_distribution_reserve
+    }
+
+    /// Returns the fullsail distribution period finish.
+    /// This value represents the timestamp when the fullsail distribution period ends.
+    ///
+    /// # Arguments
+    /// * `pool` - Reference to the pool containing the period finish
+    ///
+    /// # Returns
+    /// The fullsail distribution period finish
+    public fun get_fullsail_distribution_period_finish<CoinTypeA, CoinTypeB>(pool: &Pool<CoinTypeA, CoinTypeB>): u64 {
+        pool.fullsail_distribution_period_finish
     }
 
     /// Returns the fullsail distribution rollover amount.
