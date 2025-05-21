@@ -23,7 +23,6 @@
 /// * Reward claim events
 /// * Reward configuration update events
 module clmm_pool::rewarder {
-    use std::unit_test::assert_eq;
 
     /// Error codes for the rewarder module
     const EMaxRewardersExceeded: u64 = 934062834076983206;
