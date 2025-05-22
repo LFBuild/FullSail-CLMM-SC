@@ -221,6 +221,9 @@ module clmm_pool::clmm_math {
         if (round_up && (product & (MAX_U64 as u256) > 0)) {
             return ((product >> 64) + 1) as u64
         };
+        if (product > ((MAX_U64 as u256) << 64)) {
+            abort ECalculationOverflow
+        };
         (product >> 64) as u64
     }
 
