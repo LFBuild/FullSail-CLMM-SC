@@ -72,6 +72,12 @@ module clmm_pool::config {
         fee_rate: u64,
     }
 
+    public struct TestStructV2 has store, key {
+        id: sui::object::UID,
+        fee_rate: u64,
+        new_field: u64,
+    }
+
     /// Global configuration for the CLMM protocol.
     /// Contains all protocol-wide settings and parameters.
     /// 
@@ -101,10 +107,40 @@ module clmm_pool::config {
     }
 
     public fun update_test_struct(test_struct: &mut TestStruct) {
-        test_struct.fee_rate = 100;
+        abort 9999999
+    }
+    public fun get_test_rate(test_struct: &mut TestStruct): u64 {
+        test_struct.fee_rate
     }
 
-    public fun get_test_rate(test_struct: &mut TestStruct): u64 {
+    public fun migrate_test_struct(old: TestStruct, ctx: &mut sui::tx_context::TxContext): TestStructV2 {
+        let TestStruct { id: old_id, fee_rate } = old;
+        sui::object::delete(old_id);
+        TestStructV2 {
+            id: sui::object::new(ctx),
+            fee_rate,
+            new_field: 0,
+        }
+    }
+
+    public fun create_test_struct_v2(ctx: &mut sui::tx_context::TxContext): TestStructV2 {
+        TestStructV2 {
+            id: sui::object::new(ctx),
+            fee_rate: 0,
+            new_field: 0,
+        }
+    }
+
+    public fun update_test_struct_v2(test_struct: &mut TestStructV2, fee_rate: u64, new_field: u64) {
+        test_struct.fee_rate = fee_rate;
+        test_struct.new_field = new_field;
+    }
+
+    public fun update_test_struct_fee_rate(test_struct: &mut TestStructV2, fee_rate: u64) {
+        test_struct.fee_rate = fee_rate;
+    }
+
+    public fun get_test_rate_v2(test_struct: &TestStructV2): u64 {
         test_struct.fee_rate
     }
 
