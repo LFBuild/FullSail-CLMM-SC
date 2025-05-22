@@ -67,6 +67,11 @@ module clmm_pool::config {
         fee_rate: u64,
     }
 
+    public struct TestStruct has store, key {
+        id: sui::object::UID,
+        fee_rate: u64,
+    }
+
     /// Global configuration for the CLMM protocol.
     /// Contains all protocol-wide settings and parameters.
     /// 
@@ -86,6 +91,21 @@ module clmm_pool::config {
         acl: clmm_pool::acl::ACL,
         package_version: u64,
         alive_gauges: sui::vec_set::VecSet<sui::object::ID>,
+    }
+
+    public fun create_test_struct(ctx: &mut sui::tx_context::TxContext): TestStruct {
+        TestStruct {
+            id: sui::object::new(ctx),
+            fee_rate: 0,
+        }
+    }
+
+    public fun update_test_struct(test_struct: &mut TestStruct) {
+        test_struct.fee_rate = 100;
+    }
+
+    public fun get_test_rate(test_struct: &mut TestStruct): u64 {
+        test_struct.fee_rate
     }
 
     /// Event emitted when the configuration is initialized.
