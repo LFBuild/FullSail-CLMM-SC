@@ -61,28 +61,28 @@ module clmm_pool::tick_math_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 1)]
+    #[expected_failure(abort_code = tick_math::EInvalidTickBound)]
     fun test_get_sqrt_price_at_tick_out_of_bounds_min() {
         let tick_below_min = i32::sub(tick_math::min_tick(), i32::from(1));
         tick_math::get_sqrt_price_at_tick(tick_below_min);
     }
 
     #[test]
-    #[expected_failure(abort_code = 1)]
+    #[expected_failure(abort_code = tick_math::EInvalidTickBound)]
     fun test_get_sqrt_price_at_tick_out_of_bounds_max() {
         let tick_above_max = i32::add(tick_math::max_tick(), i32::from(1));
         tick_math::get_sqrt_price_at_tick(tick_above_max);
     }
 
     #[test]
-    #[expected_failure(abort_code = 2)]
+    #[expected_failure(abort_code = tick_math::EInvalidSqrtPrice)]
     fun test_get_tick_at_sqrt_price_out_of_bounds_min() {
         let sqrt_price_below_min = tick_math::min_sqrt_price() - 1;
         tick_math::get_tick_at_sqrt_price(sqrt_price_below_min);
     }
 
     #[test]
-    #[expected_failure(abort_code = 2)]
+    #[expected_failure(abort_code = tick_math::EInvalidSqrtPrice)]
     fun test_get_tick_at_sqrt_price_out_of_bounds_max() {
         let sqrt_price_above_max = tick_math::max_sqrt_price() + 1;
         tick_math::get_tick_at_sqrt_price(sqrt_price_above_max);

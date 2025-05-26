@@ -377,7 +377,7 @@ module clmm_pool::config_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 1)]
+    #[expected_failure(abort_code = clmm_pool::acl::EInvalidRole)]
     fun test_role_management_validation() {
         let admin = @0x123;
         let user = @0x456;

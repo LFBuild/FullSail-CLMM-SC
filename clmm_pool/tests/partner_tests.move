@@ -95,9 +95,9 @@ module clmm_pool::partner_tests {
     }
 
     /// Test partner creation with invalid fee rate (100%)
-    /// Should abort with code 2
+    /// Should abort with code EInvalidFeeRate
     #[test]
-    #[expected_failure(abort_code = 2)]
+    #[expected_failure(abort_code = partner::EInvalidFeeRate)]
     fun test_create_partner_invalid_fee_rate() {
         let admin = @0x123;
         let partner = @0x456;
@@ -140,9 +140,9 @@ module clmm_pool::partner_tests {
     }
 
     /// Test partner creation with empty name
-    /// Should abort with code 5
+    /// Should abort with code EInvalidName
     #[test]
-    #[expected_failure(abort_code = 5)]
+    #[expected_failure(abort_code = partner::EInvalidName)]
     fun test_create_partner_empty_name() {
         let admin = @0x123;
         let partner = @0x456;

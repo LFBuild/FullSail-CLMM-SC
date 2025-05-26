@@ -545,7 +545,7 @@ module clmm_pool::position_tests {
     /// Test close_position method with non-empty position
     /// Verifies that:
     /// 1. Attempting to close a non-empty position fails with error code 7
-    #[expected_failure(abort_code = 7)]
+    #[expected_failure(abort_code = position::EPositionNotEmpty)]
     fun test_close_position_non_empty() {
         let mut scenario = test_scenario::begin(@0x1);
         let admin = @0x1;
@@ -1989,9 +1989,9 @@ module clmm_pool::position_tests {
             i = i + 1;
         };
         
-        // Test fetching positions with empty position_ids
-        let empty_ids = vector::empty<object::ID>();
-        let fetched_positions = position::fetch_positions(&test_manager.position_manager, empty_ids, 3);
+        // Test fetching positions with empty position_id
+        let empty_id = option::none<object::ID>();
+        let fetched_positions = position::fetch_positions(&test_manager.position_manager, empty_id, 3);
         
         // Verify that 3 positions were fetched
         assert!(vector::length(&fetched_positions) == 3, 1);
@@ -2009,7 +2009,7 @@ module clmm_pool::position_tests {
         assert!(third_position_id == *vector::borrow(&position_ids, 2), 4);
         
         // Test fetching positions with a limit greater than the number of positions
-        let fetched_all_positions = position::fetch_positions(&test_manager.position_manager, empty_ids, 10);
+        let fetched_all_positions = position::fetch_positions(&test_manager.position_manager, empty_id, 10);
         
         // Verify that all 5 positions were fetched
         assert!(vector::length(&fetched_all_positions) == 5, 5);
@@ -2066,12 +2066,10 @@ module clmm_pool::position_tests {
             i = i + 1;
         };
         
-        // Create a vector with specific position IDs to start from (e.g., the third position)
-        let mut specific_ids = vector::empty<object::ID>();
-        vector::push_back(&mut specific_ids, *vector::borrow(&position_ids, 2));
+        let specific_id = option::some(*vector::borrow(&position_ids, 2));
         
-        // Test fetching positions with specific position_ids
-        let fetched_positions = position::fetch_positions(&test_manager.position_manager, specific_ids, 2);
+        // Test fetching positions with specific position_id
+        let fetched_positions = position::fetch_positions(&test_manager.position_manager, specific_id, 2);
         
         // Verify that 2 positions were fetched
         assert!(vector::length(&fetched_positions) == 2, 1);
@@ -2085,7 +2083,7 @@ module clmm_pool::position_tests {
         assert!(second_position_id == *vector::borrow(&position_ids, 3), 3);
         
         // Test fetching positions with a limit greater than the remaining positions
-        let fetched_all_positions = position::fetch_positions(&test_manager.position_manager, specific_ids, 10);
+        let fetched_all_positions = position::fetch_positions(&test_manager.position_manager, specific_id, 10);
         
         // Verify that all 3 remaining positions were fetched
         assert!(vector::length(&fetched_all_positions) == 3, 4);
@@ -2113,12 +2111,10 @@ module clmm_pool::position_tests {
         // Create a non-existent position ID
         let non_existent_id = object::id_from_address(@0x2);
         
-        // Create a vector with the non-existent position ID
-        let mut specific_ids = vector::empty<object::ID>();
-        vector::push_back(&mut specific_ids, non_existent_id);
+        let specific_id = option::some(non_existent_id);
         
         // Test fetching positions with a non-existent position ID
-        let fetched_positions = position::fetch_positions(&test_manager.position_manager, specific_ids, 5);
+        let fetched_positions = position::fetch_positions(&test_manager.position_manager, specific_id, 5);
         
         // Verify that no positions were fetched
         assert!(vector::length(&fetched_positions) == 0, 1);
@@ -2175,13 +2171,10 @@ module clmm_pool::position_tests {
             i = i + 1;
         };
         
-        // Create a vector with multiple position IDs to start from (e.g., the second and fourth positions)
-        let mut specific_ids = vector::empty<object::ID>();
-        vector::push_back(&mut specific_ids, *vector::borrow(&position_ids, 1));
-        vector::push_back(&mut specific_ids, *vector::borrow(&position_ids, 3));
+        let specific_id = option::some(*vector::borrow(&position_ids, 1));
         
         // Test fetching positions with multiple position IDs
-        let fetched_positions = position::fetch_positions(&test_manager.position_manager, specific_ids, 2);
+        let fetched_positions = position::fetch_positions(&test_manager.position_manager, specific_id, 2);
         
         // Verify that 2 positions were fetched
         assert!(vector::length(&fetched_positions) == 2, 1);
