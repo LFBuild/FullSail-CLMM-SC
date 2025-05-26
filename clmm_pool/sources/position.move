@@ -24,15 +24,16 @@
 /// * Staking status change events
 module clmm_pool::position {
 
-    const ENotOwner: u64 = 9854893284345743338;
-    const EOverflow: u64 = 1;
-    const ERewardIndexOutOfBounds: u64 = 2;
-    const EFullsailDistributionOverflow: u64 = 3;
-    const EPositionNotFound: u64 = 4;
-    const EInvalidTickRange: u64 = 5;
-    const EInsufficientLiquidity: u64 = 6;
-    const ELiquidityOverflow: u64 = 7;
-    const EStakingStatusUnchanged: u64 = 8;
+    const ENotOwner: u64 = 985489328434574338;
+    const EOverflow: u64 = 923065912304623497;
+    const ERewardIndexOutOfBounds: u64 = 932047692306234633;
+    const EFullsailDistributionOverflow: u64 = 932069234723906182;
+    const EPositionNotFound: u64 = 923070870234869348;
+    const EInvalidTickRange: u64 = 923846923867923746;
+    const EInsufficientLiquidity: u64 = 923879283460923860;
+    const ELiquidityOverflow: u64 = 923876923470938023;
+    const EStakingStatusUnchanged: u64 = 92372398045693466;
+    const EPositionNotEmpty: u64 = 93468306382406723;
 
     /// Event emitted when a position's staking status is changed.
     /// 
@@ -42,6 +43,74 @@ module clmm_pool::position {
     public struct StakePositionEvent has copy, drop {
         position_id: sui::object::ID,
         staked: bool,
+    }
+
+    /// Event emitted when the fullsail distribution is updated.
+    /// 
+    /// # Fields
+    /// * `position_id` - ID of the position
+    /// * `fullsail_distribution_owned` - New owned fullsail distribution
+    /// * `fullsail_distribution_growth_inside` - New growth inside fullsail distribution
+    public struct UpdateFullsailDistributionEvent has copy, drop {
+        position_id: sui::object::ID,
+        fullsail_distribution_owned: u64,
+        fullsail_distribution_growth_inside: u128,
+    }
+
+    /// Event emitted when the points are updated.
+    /// 
+    /// # Fields
+    /// * `position_id` - ID of the position
+    /// * `points_owned` - New owned points
+    /// * `points_growth_inside` - New growth inside points
+    public struct UpdatePointsEvent has copy, drop {
+        position_id: sui::object::ID,
+        points_owned: u128,
+        points_growth_inside: u128,
+    }
+
+    /// Event emitted when a reward is created.
+    /// 
+    /// # Fields
+    /// * `position_id` - ID of the position
+    /// * `reward_index` - Index of the reward
+    /// * `reward_growth_inside` - New growth inside reward
+    /// * `reward_amount_owned` - New amount owned reward
+    public struct CreateRewardEvent has copy, drop {
+        position_id: sui::object::ID,
+        reward_index: u64,
+        reward_growth_inside: u128,
+        reward_amount_owned: u64,
+    }
+
+    /// Event emitted when the reward is updated.
+    /// 
+    /// # Fields
+    /// * `position_id` - ID of the position
+    /// * `reward_index` - Index of the reward
+    /// * `reward_growth_inside` - New growth inside reward
+    /// * `reward_amount_owned` - New amount owned reward
+    public struct UpdateRewardEvent has copy, drop {
+        position_id: sui::object::ID,
+        reward_index: u64,
+        reward_growth_inside: u128,
+        reward_amount_owned: u64,
+    }
+
+    /// Event emitted when the fee is updated.
+    /// 
+    /// # Fields
+    /// * `position_id` - ID of the position
+    /// * `fee_owned_a` - New fee owned for token A
+    /// * `fee_owned_b` - New fee owned for token B
+    /// * `fee_growth_inside_a` - New growth inside fee for token A
+    /// * `fee_growth_inside_b` - New growth inside fee for token B
+    public struct UpdateFeeEvent has copy, drop {
+        position_id: sui::object::ID,
+        fee_owned_a: u64,
+        fee_owned_b: u64,
+        fee_growth_inside_a: u128,
+        fee_growth_inside_b: u128,
     }
 
     /// Manages all positions in the pool system.
@@ -294,9 +363,9 @@ module clmm_pool::position {
     /// * If the position is not empty (error code: 7)
     public(package) fun close_position(position_manager: &mut PositionManager, position: Position) {
         let position_id = sui::object::id<Position>(&position);
-        if (!is_empty(borrow_mut_position_info(position_manager, position_id))) {
-            abort 7
-        };
+
+        assert!(is_empty(borrow_position_info(position_manager, position_id)), EPositionNotEmpty);
+
         move_stl::linked_table::remove<sui::object::ID, PositionInfo>(&mut position_manager.positions, position_id);
         destroy(position);
     }
@@ -379,12 +448,12 @@ module clmm_pool::position {
     }
 
     /// Fetches a list of position information up to the specified limit.
-    /// If position_ids is empty, starts from the first position in the linked table.
-    /// Otherwise, starts from the first position ID in the provided vector.
+    /// If pre_start_position_id is None, starts from the first position in the linked table.
+    /// Otherwise, starts from the position after the ID specified in pre_start_position_id.
     /// 
     /// # Arguments
     /// * `position_manager` - Reference to the position manager
-    /// * `position_ids` - Vector of position IDs to start fetching from. If empty, starts from the beginning
+    /// * `pre_start_position_id` - Optional position ID to start fetching after. If None, starts from the beginning of the table.
     /// * `limit` - Maximum number of positions to return
     /// 
     /// # Returns
@@ -393,18 +462,18 @@ module clmm_pool::position {
     /// # Details
     /// * Iterates through the linked table of positions
     /// * Returns up to 'limit' number of positions
-    /// * If position_ids is provided, starts from the first ID in the vector
-    /// * If position_ids is empty, starts from the first position in the linked table
+    /// * If pre_start_position_id is Some, starts from the position after that ID
+    /// * If pre_start_position_id is None, starts from the first position in the linked table
     public fun fetch_positions(
         position_manager: &PositionManager,
-        position_ids: vector<sui::object::ID>,
+        pre_start_position_id: Option<sui::object::ID>,
         limit: u64
     ): vector<PositionInfo> {
         let mut positions = std::vector::empty<PositionInfo>();
-        let next_id = if (std::vector::is_empty<sui::object::ID>(&position_ids)) {
+        let next_id = if (option::is_none<sui::object::ID>(&pre_start_position_id)) {
             move_stl::linked_table::head<sui::object::ID, PositionInfo>(&position_manager.positions)
         } else {
-            let first_id = *std::vector::borrow<sui::object::ID>(&position_ids, 0);
+            let first_id = *std::option::borrow<sui::object::ID>(&pre_start_position_id);
             if (!move_stl::linked_table::contains<sui::object::ID, PositionInfo>(&position_manager.positions, first_id)) {
                 return positions
             };
@@ -607,32 +676,22 @@ module clmm_pool::position {
     /// * Transfers the Display<Position> object to the transaction sender
     /// * Transfers the Publisher object to the transaction sender
     fun init(position_witness: POSITION, ctx: &mut sui::tx_context::TxContext) {
-        let mut display_keys = std::vector::empty<std::string::String>();
-        std::vector::push_back<std::string::String>(&mut display_keys, std::string::utf8(b"name"));
-        std::vector::push_back<std::string::String>(&mut display_keys, std::string::utf8(b"coin_a"));
-        std::vector::push_back<std::string::String>(&mut display_keys, std::string::utf8(b"coin_b")); 
-        std::vector::push_back<std::string::String>(&mut display_keys, std::string::utf8(b"link"));
-        std::vector::push_back<std::string::String>(&mut display_keys, std::string::utf8(b"image_url"));
-        std::vector::push_back<std::string::String>(&mut display_keys, std::string::utf8(b"description"));
-        std::vector::push_back<std::string::String>(&mut display_keys, std::string::utf8(b"website"));
-        std::vector::push_back<std::string::String>(&mut display_keys, std::string::utf8(b"creator"));
-
-        let mut display_values = std::vector::empty<std::string::String>();
-        std::vector::push_back<std::string::String>(&mut display_values, std::string::utf8(b"{name}"));
-        std::vector::push_back<std::string::String>(&mut display_values, std::string::utf8(b"{coin_type_a}"));
-        std::vector::push_back<std::string::String>(&mut display_values, std::string::utf8(b"{coin_type_b}"));
-        std::vector::push_back<std::string::String>(
-            &mut display_values,
-            std::string::utf8(b"https://app.fullsailfinance.io/position?chain=sui&id={id}")
-        );
-        std::vector::push_back<std::string::String>(&mut display_values, std::string::utf8(b"{url}"));
-        std::vector::push_back<std::string::String>(&mut display_values, std::string::utf8(b"{description}"));
-        std::vector::push_back<std::string::String>(&mut display_values, std::string::utf8(b"https://fullsailfinance.io"));
-        std::vector::push_back<std::string::String>(&mut display_values, std::string::utf8(b"FULLSAIL"));
 
         let publisher = sui::package::claim<POSITION>(position_witness, ctx);
-        let mut display = sui::display::new_with_fields<Position>(&publisher, display_keys, display_values, ctx);
-        sui::display::update_version<Position>(&mut display);
+
+        let display = update_display(
+            &publisher,
+            std::string::utf8(b"{name}"),
+            std::string::utf8(b"{coin_type_a}"),
+            std::string::utf8(b"{coin_type_b}"),
+            std::string::utf8(b"https://app.fullsailfinance.io/position?chain=sui&id={id}"),
+            std::string::utf8(b"{url}"),
+            std::string::utf8(b"{description}"),
+            std::string::utf8(b"https://fullsailfinance.io"),
+            std::string::utf8(b"FULLSAIL"),
+            ctx
+        );
+
         sui::transfer::public_transfer<sui::display::Display<Position>>(display, sui::tx_context::sender(ctx));
         sui::transfer::public_transfer<sui::package::Publisher>(publisher, sui::tx_context::sender(ctx));
     }
@@ -960,6 +1019,52 @@ module clmm_pool::position {
     ) {
         assert!(publisher.from_module<Position>(), ENotOwner);
         clmm_pool::config::checked_package_version(global_config);
+
+        let display = update_display(
+            publisher,
+            std::string::utf8(b"{name}"),
+            std::string::utf8(b"{coin_type_a}"),
+            std::string::utf8(b"{coin_type_b}"),
+            link,
+            std::string::utf8(b"{url}"),
+            description,
+            project_url,
+            creator,
+            ctx
+        );
+
+        sui::transfer::public_transfer<sui::display::Display<Position>>(display, sui::tx_context::sender(ctx));
+    }
+
+    /// Updates the display fields for a position.
+    /// This function sets up the display fields for a position with the given parameters.
+    /// 
+    /// # Arguments
+    /// * `publisher` - Reference to the package publisher
+    /// * `name` - Position name
+    /// * `coin_type_a` - First token type
+    /// * `coin_type_b` - Second token type
+    /// * `link` - Position link
+    /// * `image_url` - Position image URL
+    /// * `description` - Position description
+    /// * `project_url` - Project website URL
+    /// * `creator` - Position creator
+    /// * `ctx` - Transaction context
+    /// 
+    /// # Returns
+    /// A new display object for the position
+    fun update_display(
+        publisher: &sui::package::Publisher,
+        name: std::string::String,
+        coin_type_a: std::string::String,
+        coin_type_b: std::string::String,
+        link: std::string::String,
+        image_url: std::string::String,
+        description: std::string::String,
+        project_url: std::string::String,
+        creator: std::string::String,
+        ctx: &mut sui::tx_context::TxContext
+    ): sui::display::Display<clmm_pool::position::Position> {
         let mut keys = std::vector::empty<std::string::String>();
         std::vector::push_back<std::string::String>(&mut keys, std::string::utf8(b"name"));
         std::vector::push_back<std::string::String>(&mut keys, std::string::utf8(b"coin_a"));
@@ -969,18 +1074,22 @@ module clmm_pool::position {
         std::vector::push_back<std::string::String>(&mut keys, std::string::utf8(b"description"));
         std::vector::push_back<std::string::String>(&mut keys, std::string::utf8(b"project_url"));
         std::vector::push_back<std::string::String>(&mut keys, std::string::utf8(b"creator"));
+
         let mut values = std::vector::empty<std::string::String>();
-        std::vector::push_back<std::string::String>(&mut values, std::string::utf8(b"{name}"));
-        std::vector::push_back<std::string::String>(&mut values, std::string::utf8(b"{coin_type_a}"));
-        std::vector::push_back<std::string::String>(&mut values, std::string::utf8(b"{coin_type_b}"));
+        std::vector::push_back<std::string::String>(&mut values, name);
+        std::vector::push_back<std::string::String>(&mut values, coin_type_a);
+        std::vector::push_back<std::string::String>(&mut values, coin_type_b);
         std::vector::push_back<std::string::String>(&mut values, link);
-        std::vector::push_back<std::string::String>(&mut values, std::string::utf8(b"{url}"));
+        std::vector::push_back<std::string::String>(&mut values, image_url);
         std::vector::push_back<std::string::String>(&mut values, description);
         std::vector::push_back<std::string::String>(&mut values, project_url);
         std::vector::push_back<std::string::String>(&mut values, creator);
+
         let mut display = sui::display::new_with_fields<Position>(publisher, keys, values, ctx);
+
         sui::display::update_version<Position>(&mut display);
-        sui::transfer::public_transfer<sui::display::Display<Position>>(display, sui::tx_context::sender(ctx));
+
+        display
     }
 
     /// Returns the tick range of a position.
@@ -1156,6 +1265,15 @@ module clmm_pool::position {
         position_info.fee_owned_b = position_info.fee_owned_b + fee_owned_b_delta;
         position_info.fee_growth_inside_a = fee_growth_a;
         position_info.fee_growth_inside_b = fee_growth_b;
+
+        let event = UpdateFeeEvent {
+            position_id: position_info.position_id,
+            fee_owned_a: position_info.fee_owned_a,
+            fee_owned_b: position_info.fee_owned_b,
+            fee_growth_inside_a: position_info.fee_growth_inside_a,
+            fee_growth_inside_b: position_info.fee_growth_inside_b,
+        };
+        sui::event::emit<UpdateFeeEvent>(event);
     }
 
     /// Updates the FULLSAIL distribution growth for a position.
@@ -1217,6 +1335,13 @@ module clmm_pool::position {
         );
         position_info.fullsail_distribution_owned = position_info.fullsail_distribution_owned + fullsail_delta;
         position_info.fullsail_distribution_growth_inside = fullsail_growth;
+
+        let event = UpdateFullsailDistributionEvent {
+            position_id: position_info.position_id,
+            fullsail_distribution_owned: position_info.fullsail_distribution_owned,
+            fullsail_distribution_growth_inside: position_info.fullsail_distribution_growth_inside
+        };
+        sui::event::emit<UpdateFullsailDistributionEvent>(event);
     }
 
     /// Updates the points growth for a position.
@@ -1267,6 +1392,13 @@ module clmm_pool::position {
         assert!(integer_mate::math_u128::add_check(position_info.points_owned, points_delta), EOverflow);
         position_info.points_owned = position_info.points_owned + points_delta;
         position_info.points_growth_inside = points_growth;
+
+        let event = UpdatePointsEvent {
+            position_id: position_info.position_id,
+            points_owned: position_info.points_owned,
+            points_growth_inside: position_info.points_growth_inside,
+        };
+        sui::event::emit<UpdatePointsEvent>(event);
     }
 
     /// Updates the rewards growth for a position.
@@ -1333,11 +1465,28 @@ module clmm_pool::position {
                 assert!(integer_mate::math_u64::add_check(reward.amount_owned, reward_delta), EOverflow);
                 reward.growth_inside = current_growth;
                 reward.amount_owned = reward.amount_owned + reward_delta;
+
+                let event = UpdateRewardEvent {
+                    position_id: position_info.position_id,
+                    reward_index: index,
+                    reward_growth_inside: reward.growth_inside,
+                    reward_amount_owned: reward.amount_owned,
+                };
+                sui::event::emit<UpdateRewardEvent>(event);
             } else {
                 let new_reward = PositionReward {
                     growth_inside: current_growth,
                     amount_owned: integer_mate::full_math_u128::mul_shr(current_growth, position_info.liquidity, 64) as u64,
                 };
+
+                let event = CreateRewardEvent {
+                    position_id: position_info.position_id,
+                    reward_index: index,
+                    reward_growth_inside: new_reward.growth_inside,
+                    reward_amount_owned: new_reward.amount_owned,
+                };
+                sui::event::emit<CreateRewardEvent>(event);
+
                 std::vector::push_back<PositionReward>(&mut position_info.rewards, new_reward);
             };
             index = index + 1;
@@ -1361,32 +1510,22 @@ module clmm_pool::position {
     /// Test initialization of the position system
     /// Replicates the init function logic for testing purposes
     public fun test_init(ctx: &mut sui::tx_context::TxContext) {
-        let mut display_keys = std::vector::empty<std::string::String>();
-        std::vector::push_back<std::string::String>(&mut display_keys, std::string::utf8(b"name"));
-        std::vector::push_back<std::string::String>(&mut display_keys, std::string::utf8(b"coin_a"));
-        std::vector::push_back<std::string::String>(&mut display_keys, std::string::utf8(b"coin_b")); 
-        std::vector::push_back<std::string::String>(&mut display_keys, std::string::utf8(b"link"));
-        std::vector::push_back<std::string::String>(&mut display_keys, std::string::utf8(b"image_url"));
-        std::vector::push_back<std::string::String>(&mut display_keys, std::string::utf8(b"description"));
-        std::vector::push_back<std::string::String>(&mut display_keys, std::string::utf8(b"website"));
-        std::vector::push_back<std::string::String>(&mut display_keys, std::string::utf8(b"creator"));
-
-        let mut display_values = std::vector::empty<std::string::String>();
-        std::vector::push_back<std::string::String>(&mut display_values, std::string::utf8(b"{name}"));
-        std::vector::push_back<std::string::String>(&mut display_values, std::string::utf8(b"{coin_type_a}"));
-        std::vector::push_back<std::string::String>(&mut display_values, std::string::utf8(b"{coin_type_b}"));
-        std::vector::push_back<std::string::String>(
-            &mut display_values,
-            std::string::utf8(b"https://app.fullsailfinance.io/position?chain=sui&id={id}")
-        );
-        std::vector::push_back<std::string::String>(&mut display_values, std::string::utf8(b"{url}"));
-        std::vector::push_back<std::string::String>(&mut display_values, std::string::utf8(b"{description}"));
-        std::vector::push_back<std::string::String>(&mut display_values, std::string::utf8(b"https://fullsailfinance.io"));
-        std::vector::push_back<std::string::String>(&mut display_values, std::string::utf8(b"FULLSAIL"));
-
+        
         let publisher = sui::package::claim<POSITION>(POSITION{}, ctx);
-        let mut display = sui::display::new_with_fields<Position>(&publisher, display_keys, display_values, ctx);
-        sui::display::update_version<Position>(&mut display);
+
+        let display = update_display(
+            &publisher,
+            std::string::utf8(b"{name}"),
+            std::string::utf8(b"{coin_type_a}"),
+            std::string::utf8(b"{coin_type_b}"),
+            std::string::utf8(b"https://app.fullsailfinance.io/position?chain=sui&id={id}"),
+            std::string::utf8(b"{url}"),
+            std::string::utf8(b"{description}"),
+            std::string::utf8(b"https://fullsailfinance.io"),
+            std::string::utf8(b"FULLSAIL"),
+            ctx
+        );
+
         sui::transfer::public_transfer<sui::display::Display<Position>>(display, sui::tx_context::sender(ctx));
         sui::transfer::public_transfer<sui::package::Publisher>(publisher, sui::tx_context::sender(ctx));
     }
@@ -1478,8 +1617,8 @@ module clmm_pool::position {
             let description_field = sui::vec_map::get(display_fields, &std::string::utf8(b"description"));
             assert!(std::string::utf8(b"{description}") == *description_field, 8);
 
-            let website_field = sui::vec_map::get(display_fields, &std::string::utf8(b"website"));
-            assert!(std::string::utf8(b"https://fullsailfinance.io") == *website_field, 9);
+            let project_url_field = sui::vec_map::get(display_fields, &std::string::utf8(b"project_url"));
+            assert!(std::string::utf8(b"https://fullsailfinance.io") == *project_url_field, 9);
 
             let creator_field = sui::vec_map::get(display_fields, &std::string::utf8(b"creator"));
             assert!(std::string::utf8(b"FULLSAIL") == *creator_field, 10);

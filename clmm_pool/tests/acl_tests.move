@@ -154,7 +154,7 @@ module clmm_pool::acl_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 1)]
+    #[expected_failure(abort_code = acl::EInvalidRole)]
     fun test_invalid_role() {
         let mut ctx = tx_context::dummy();
         let mut test_acl = TestACL {

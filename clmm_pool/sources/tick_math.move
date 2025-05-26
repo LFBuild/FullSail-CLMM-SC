@@ -24,9 +24,9 @@
 /// * MAX_SQRT_PRICE - Maximum allowed square root price
 module clmm_pool::tick_math {
     /// Error codes for the tick math module
-    const EInvalidTickBound: u64 = 1;
-    const EInvalidSqrtPrice: u64 = 2;
-    const ETestAssertionFailed: u64 = 3;
+    const EInvalidTickBound: u64 = 934062834096783063;
+    const EInvalidSqrtPrice: u64 = 923486203946803997;
+    const ETestAssertionFailed: u64 = 923780347002346345;
 
     /// Converts a boolean value to u8.
     /// Returns 1 if the input is true, 0 otherwise.
@@ -281,35 +281,49 @@ module clmm_pool::tick_math {
         // Validate that sqrt_price is within allowed bounds
         assert!(sqrt_price >= min_sqrt_price() && sqrt_price <= max_sqrt_price(), EInvalidSqrtPrice);
 
+        let mut total_bits = 0;
+
         // Calculate the most significant bit position
         // 18446744073709551616 = 2^64
-        let msb_bits = as_u8(sqrt_price >= 18446744073709551616) << 6;
-        let msb_shifted = sqrt_price >> msb_bits;
+        let mut bits = as_u8(sqrt_price >= 0x10_000_000_000_000_000) << 6;
+        let mut shifted = sqrt_price >> bits;
+
+        total_bits = total_bits | bits;
 
         // Calculate high bits (32-bit range)
         // 4294967296 = 2^32
-        let high_bits = as_u8(msb_shifted >= 4294967296) << 5;
-        let high_shifted = msb_shifted >> high_bits;
+        bits = as_u8(shifted >= 0x100_000_000) << 5;
+        shifted = shifted >> bits;
+
+        total_bits = total_bits | bits;
 
         // Calculate mid-high bits (16-bit range)
         // 65536 = 2^16
-        let mid_high_bits = as_u8(high_shifted >= 65536) << 4;
-        let mid_high_shifted = high_shifted >> mid_high_bits;
+        bits = as_u8(shifted >= 0x10_000) << 4;
+        shifted = shifted >> bits;
+
+        total_bits = total_bits | bits;
 
         // Calculate mid bits (8-bit range)
         // 256 = 2^8
-        let mid_bits = as_u8(mid_high_shifted >= 256) << 3;
-        let mid_shifted = mid_high_shifted >> mid_bits;
+        bits = as_u8(shifted >= 0x100) << 3;
+        shifted = shifted >> bits;
+
+        total_bits = total_bits | bits;
 
         // Calculate mid-low bits (4-bit range)
         // 16 = 2^4
-        let mid_low_bits = as_u8(mid_shifted >= 16) << 2;
-        let mid_low_shifted = mid_shifted >> mid_low_bits;
+        bits = as_u8(shifted >= 0x10) << 2;
+        shifted = shifted >> bits;
+
+        total_bits = total_bits | bits;
 
         // Calculate low bits (2-bit range)
         // 4 = 2^2
-        let low_bits = as_u8(mid_low_shifted >= 4) << 1;
-        let total_bits = 0 | msb_bits | high_bits | mid_high_bits | mid_bits | mid_low_bits | low_bits | as_u8(mid_low_shifted >> low_bits >= 2) << 0;
+        bits = as_u8(shifted >= 4) << 1;
+        shifted = shifted >> bits;
+
+        total_bits = total_bits | bits | (as_u8(shifted >= 2) << 0);
 
         // Calculate initial result by shifting the total bits
         let mut result = integer_mate::i128::shl(
@@ -335,7 +349,7 @@ module clmm_pool::tick_math {
             bit_pos = bit_pos - 1;
         };
 
-        // Calculate tick range using magic numbers
+        // Calculate tick range
         // 59543866431366 = 2^96 / (2^32 * 1.0001^(0.5))
         // 184467440737095516 = 2^64 * 1.0001^(0.5)
         // 15793534762490258745 = 2^64 * 1.0001^(0.5) * 2^32

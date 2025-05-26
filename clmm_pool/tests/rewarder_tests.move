@@ -2,14 +2,8 @@
 module clmm_pool::rewarder_tests {
     use clmm_pool::rewarder;
     use sui::test_scenario;
-    use sui::transfer;
-    use sui::object;
     use sui::coin;
-    use sui::balance;
-    use sui::bag;
-    use std::vector;
     use std::type_name;
-    use std::option;
 
     #[test_only]
     public struct MY_COIN has drop {}
@@ -113,7 +107,7 @@ module clmm_pool::rewarder_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 2)]
+    #[expected_failure(abort_code = rewarder::ERewarderAlreadyExists)]
     fun test_rewarder_duplicate_add() {
         let admin = @0x123;
         let mut scenario = test_scenario::begin(admin);
@@ -139,7 +133,7 @@ module clmm_pool::rewarder_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 1)]
+    #[expected_failure(abort_code = rewarder::EMaxRewardersExceeded)]
     fun test_rewarder_max_limit() {
         let admin = @0x123;
         let mut scenario = test_scenario::begin(admin);
@@ -200,7 +194,7 @@ module clmm_pool::rewarder_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 5)]
+    #[expected_failure(abort_code = rewarder::ERewarderNotFound)]
     fun test_rewarder_borrow_nonexistent() {
         let admin = @0x123;
         let mut scenario = test_scenario::begin(admin);
@@ -225,7 +219,7 @@ module clmm_pool::rewarder_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 5)]
+    #[expected_failure(abort_code = rewarder::ERewarderNotFound)]
     fun test_rewarder_borrow_mut_nonexistent() {
         let admin = @0x123;
         let mut scenario = test_scenario::begin(admin);
@@ -361,7 +355,7 @@ module clmm_pool::rewarder_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 4)]
+    #[expected_failure(abort_code = rewarder::EInsufficientBalance)]
     fun test_update_emission_insufficient_balance() {
         let admin = @0x123;
         let mut scenario = test_scenario::begin(admin);
@@ -386,13 +380,13 @@ module clmm_pool::rewarder_tests {
             rewarder::add_rewarder<MY_COIN>(&mut test_rewarder.rewarder_manager);
             
             // Add small amount of coins to vault (less than required for emission rate)
-            let coin = coin::mint_for_testing<MY_COIN>(1000, scenario.ctx());
+            let coin = coin::mint_for_testing<MY_COIN>((86400 * 1000) -1 , scenario.ctx());
             let balance = coin::into_balance(coin);
             rewarder::deposit_reward(&global_config, &mut vault, balance);
             
             // Try to set emission rate that requires more balance than available
             // Required balance: 86400 * 1000 = 86400000
-            // Available balance: 1000
+            // Available balance: 86400 * 1000 = 86400000
             // After shift: 1000 << 64 = 18446744073709551616000
             // This should fail because 1000 << 64 < 86400000
             rewarder::update_emission<MY_COIN>(&mut vault, &mut test_rewarder.rewarder_manager, 1000, 1000 << 64, 1000);
@@ -406,7 +400,7 @@ module clmm_pool::rewarder_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 5)]
+    #[expected_failure(abort_code = rewarder::ERewarderNotFound)]
     fun test_update_emission_nonexistent_rewarder() {
         let admin = @0x123;
         let mut scenario = test_scenario::begin(admin);
@@ -439,7 +433,7 @@ module clmm_pool::rewarder_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 3)]
+    #[expected_failure(abort_code = rewarder::EInvalidTime)]
     fun test_settle_invalid_time() {
         let admin = @0x123;
         let mut scenario = test_scenario::begin(admin);

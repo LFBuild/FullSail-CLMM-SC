@@ -23,16 +23,23 @@
 /// * Reward claim events
 /// * Reward configuration update events
 module clmm_pool::rewarder {
-    /// Error codes for the rewarder module
-    const EMaxRewardersExceeded: u64 = 1;
-    const ERewarderAlreadyExists: u64 = 2;
-    const EInvalidTime: u64 = 3;
-    const EInsufficientBalance: u64 = 4;
-    const ERewarderNotFound: u64 = 5;
-    const EOverflowBalance: u64 = 92394823577283472;
 
-    /// Points multiplier for precision in calculations (MAX_U64 * 10^12)
-    const POINTS_MULTIPLIER: u128 = 18446744073709551616000000;
+    /// Error codes for the rewarder module
+    const EMaxRewardersExceeded: u64 = 934062834076983206;
+    const ERewarderAlreadyExists: u64 = 934862304673206987;
+    const EInvalidTime: u64 = 923872347632063063;
+    const EInsufficientBalance: u64 = 928307230473046907;
+    const ERewarderNotFound: u64 = 923867923457032960;
+    const EOverflowBalance: u64 = 92394823577283472;
+    const EIncorrectWithdrawAmount: u64 = 94368340613806333;
+
+    const SECONDS_PER_DAY: u64 = 86400;
+
+    /// Points per second rate (Q64.64)
+    const POINTS_PER_SECOND: u128 = 1000000 << 64;
+
+    /// Points growth multiplier for precision in calculations (Q64.64)
+    const POINTS_GROWTH_MULTIPLIER: u128 = 1000000 << 64;
 
     /// Manager for reward distribution in the pool.
     /// Contains information about all rewarders, points, and timing.
@@ -278,6 +285,13 @@ module clmm_pool::rewarder {
         withdraw_amount: u64
     ): sui::balance::Balance<RewardCoinType> {
         clmm_pool::config::checked_package_version(global_config);
+
+        let reward_type = std::type_name::get<RewardCoinType>();
+        assert!(((withdraw_amount as u128)<<64) <= *rewarder_vault.available_balance.borrow(reward_type), EIncorrectWithdrawAmount);
+
+        let available_balance = rewarder_vault.available_balance.remove(reward_type);
+        rewarder_vault.available_balance.add(reward_type, available_balance - ((withdraw_amount as u128)<<64));
+
         let event = EmergentWithdrawEvent {
             reward_type: std::type_name::get<RewardCoinType>(),
             withdraw_amount: withdraw_amount,
@@ -285,6 +299,17 @@ module clmm_pool::rewarder {
         };
         sui::event::emit<EmergentWithdrawEvent>(event);
         withdraw_reward<RewardCoinType>(rewarder_vault, withdraw_amount)
+    }
+
+    /// Gets the available balance for a specific reward token.
+    /// 
+    /// # Arguments
+    /// * `rewarder_vault` - Reference to the rewarder global vault
+    /// 
+    /// # Returns
+    /// The available balance for the specified reward token (Q64.64)
+    public fun get_available_balance<RewardCoinType>(rewarder_vault: &RewarderGlobalVault): u128 {
+        *rewarder_vault.available_balance.borrow(std::type_name::get<RewardCoinType>())
     }
 
     /// Gets the emission rate for a rewarder.
@@ -471,10 +496,10 @@ module clmm_pool::rewarder {
             
             index = index + 1;
         };
-        manager.points_released = manager.points_released + (time_delta as u128) * POINTS_MULTIPLIER;
+        manager.points_released = manager.points_released + (time_delta as u128) * POINTS_PER_SECOND;
         manager.points_growth_global = manager.points_growth_global + integer_mate::full_math_u128::mul_div_floor(
             time_delta as u128,
-            POINTS_MULTIPLIER,
+            POINTS_GROWTH_MULTIPLIER,
             liquidity
         );
     }
@@ -502,12 +527,8 @@ module clmm_pool::rewarder {
         if (emission_rate > 0) {
             let reward_type = std::type_name::get<RewardCoinType>();
             assert!(sui::bag::contains<std::type_name::TypeName>(&rewarder_vault.balances, reward_type), ERewarderNotFound);
-            assert!(
-                (sui::balance::value<RewardCoinType>(
-                    sui::bag::borrow<std::type_name::TypeName, sui::balance::Balance<RewardCoinType>>(&rewarder_vault.balances, reward_type)
-                ) as u128) >= (86400 * (emission_rate >> 64)),
-                EInsufficientBalance
-            );
+            assert!(*rewarder_vault.available_balance.borrow(reward_type) >= 
+                integer_mate::full_math_u128::mul_shr((SECONDS_PER_DAY as u128)<<64, emission_rate, 64), EInsufficientBalance);
         };
         borrow_mut_rewarder<RewardCoinType>(rewarder_manager).emissions_per_second = emission_rate;
     }
