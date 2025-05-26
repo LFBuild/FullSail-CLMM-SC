@@ -1266,14 +1266,16 @@ module clmm_pool::pool {
     /// A tuple containing:
     /// * The amount of fees allocated to staked liquidity providers
     /// * The amount of fees allocated to unstaked liquidity providers
-    fun calculate_fees<CoinTypeA, CoinTypeB>(
-        pool: &Pool<CoinTypeA, CoinTypeB>,
+    fun calculate_fees(
         fee_amount: u64,
         total_liquidity: u128,
         staked_liquidity: u128,
         unstaked_fee_rate: u64
     ): (u128, u64) {
-        if (total_liquidity == pool.fullsail_distribution_staked_liquidity) {
+        if (
+            total_liquidity <= 0 ||
+            (staked_liquidity - staked_liquidity) <= 0
+        ) {
             (0, fee_amount)
         } else {
             let (staked_fee, unstaked_fee) = if (staked_liquidity == 0) {
@@ -1283,6 +1285,7 @@ module clmm_pool::pool {
                 let (staked_amount, unstaked_fee_amount) = split_fees(fee_amount, total_liquidity, staked_liquidity, unstaked_fee_rate);
                 (integer_mate::full_math_u128::mul_div_floor(staked_amount as u128, Q64, total_liquidity - staked_liquidity), unstaked_fee_amount)
             };
+
             (staked_fee, unstaked_fee)
         }
     }
@@ -1381,8 +1384,7 @@ module clmm_pool::pool {
                     clmm_pool::config::protocol_fee_rate(global_config),
                     clmm_pool::config::protocol_fee_rate_denom()
                 );
-                let (_, gauge_fee) = calculate_fees<CoinTypeA, CoinTypeB>(
-                    pool,
+                let (_, gauge_fee) = calculate_fees(
                     fee_amount - protocol_fee,
                     pool.liquidity,
                     pool.fullsail_distribution_staked_liquidity,
@@ -1552,8 +1554,7 @@ module clmm_pool::pool {
                     protocol_fee = protocol_fee_amount;
                     let fee_after_protocol = remaining_fee - protocol_fee_amount;
                     if (fee_after_protocol > 0) {
-                        let (_, gauge_fee_amount) = calculate_fees<CoinTypeA, CoinTypeB>(
-                            pool,
+                        let (_, gauge_fee_amount) = calculate_fees(
                             fee_after_protocol,
                             pool.liquidity,
                             pool.fullsail_distribution_staked_liquidity,
@@ -3229,13 +3230,13 @@ module clmm_pool::pool {
     }
 
     /// Splits fees between staked and unstaked portions of liquidity.
-    /// Calculates fee distribution based on growth inside and outside the given tick range,
+    /// Calculates fee distribution based on total liquidity and staked liquidity amounts,
     /// and takes into account the unstaked fee rate.
     ///
     /// # Arguments
     /// * `fee_amount` - Total fee amount to be distributed
-    /// * `total_growth` - Total fee growth in the pool
-    /// * `growth_inside` - Fee growth inside the given tick range
+    /// * `total_liquidity` - Total liquidity in the pool
+    /// * `staked_liquidity` - Amount of staked liquidity
     /// * `unstaked_fee_rate` - Fee rate for unstaked liquidity
     ///
     /// # Returns
@@ -3244,20 +3245,21 @@ module clmm_pool::pool {
     /// * Second value - fee amount for unstaked liquidity
     fun split_fees(
         fee_amount: u64,
-        total_growth: u128,
-        growth_inside: u128,
+        total_liquidity: u128,
+        staked_liquidity: u128,
         unstaked_fee_rate: u64
     ): (u64, u64) {
-        let inside_amount = integer_mate::full_math_u128::mul_div_ceil(
+        let staked_fee_amount = integer_mate::full_math_u128::mul_div_ceil(
             fee_amount as u128,
-            growth_inside,
-            total_growth
+            staked_liquidity,
+            total_liquidity
         );
         let (staked_amount, unstaked_amount) = apply_unstaked_fees(
-            (fee_amount as u128) - inside_amount,
-            inside_amount,
+            (fee_amount as u128) - staked_fee_amount,
+            staked_fee_amount,
             unstaked_fee_rate
         );
+
         (staked_amount as u64, unstaked_amount as u64)
     }
 
@@ -3483,8 +3485,7 @@ module clmm_pool::pool {
                     let remaining_fee_after_protocol = remaining_fee - protocol_fee_amount;
                     fee_after_protocol = remaining_fee_after_protocol;
                     if (remaining_fee_after_protocol > 0) {
-                        let (_, gauge_fee_amount) = calculate_fees<CoinTypeA, CoinTypeB>(
-                            pool, 
+                        let (_, gauge_fee_amount) = calculate_fees(
                             remaining_fee_after_protocol, 
                             pool.liquidity, 
                             pool.fullsail_distribution_staked_liquidity, 
