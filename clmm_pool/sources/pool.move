@@ -709,28 +709,6 @@ module clmm_pool::pool {
         pool.liquidity
     }
 
-    /// Marks a position as staked in the pool.
-    /// This function can only be called if the pool is not paused.
-    ///
-    /// # Arguments
-    /// * `pool` - The pool containing the position
-    /// * `gauge_cap` - The gauge capability for the position
-    /// * `position_id` - The ID of the position to mark as staked
-    ///
-    /// # Aborts
-    /// If the pool is paused (error code: EPoolPaused)
-    public fun mark_position_staked<CoinTypeA, CoinTypeB>(
-        pool: &mut Pool<CoinTypeA, CoinTypeB>,
-        gauge_cap: &gauge_cap::gauge_cap::GaugeCap,
-        position_id: sui::object::ID
-    ) {
-        assert!(!pool.is_pause, EPoolPaused);
-        check_gauge_cap<CoinTypeA, CoinTypeB>(pool, gauge_cap);
-        clmm_pool::position::validate_position_exists(&pool.position_manager, position_id);
-
-        clmm_pool::position::mark_position_staked(&mut pool.position_manager, position_id, true);
-    }
-
     /// Opens a new position in the pool with the specified tick range.
     /// This function can only be called if the pool is not paused.
     ///
@@ -1303,7 +1281,7 @@ module clmm_pool::pool {
     ): (u128, u64) {
         if (
             total_liquidity <= 0 ||
-            (staked_liquidity - staked_liquidity) <= 0
+            (total_liquidity - staked_liquidity) <= 0
         ) {
             (0, fee_amount)
         } else {
@@ -2777,27 +2755,6 @@ module clmm_pool::pool {
         }
     }
 
-    /// Marks a position as unstaked in the fullsail distribution system.
-    ///
-    /// # Arguments
-    /// * `pool` - Reference to the pool containing the position
-    /// * `gauge_cap` - Reference to the gauge capability
-    /// * `position_id` - ID of the position to mark as unstaked
-    ///
-    /// # Aborts
-    /// * If the pool is paused (error code: EPoolPaused)
-    public fun mark_position_unstaked<CoinTypeA, CoinTypeB>(
-        pool: &mut Pool<CoinTypeA, CoinTypeB>,
-        gauge_cap: &gauge_cap::gauge_cap::GaugeCap,
-        position_id: sui::object::ID
-    ) {
-        assert!(!pool.is_pause, EPoolPaused);
-        check_gauge_cap<CoinTypeA, CoinTypeB>(pool, gauge_cap);
-        clmm_pool::position::validate_position_exists(&pool.position_manager, position_id);
-
-        clmm_pool::position::mark_position_staked(&mut pool.position_manager, position_id, false);
-    }
-
     /// Pauses the pool, preventing all operations except unpausing.
     /// This function can only be called by the pool manager role.
     ///
@@ -3227,9 +3184,7 @@ module clmm_pool::pool {
     /// # Arguments
     /// * `pool` - Mutable reference to the pool where liquidity will be staked
     /// * `gauge_cap` - Reference to the gauge capability for authorization
-    /// * `liquidity` - Amount of liquidity to stake
-    /// * `tick_lower` - Lower bound of the tick range for staking
-    /// * `tick_upper` - Upper bound of the tick range for staking
+    /// * `position` - Reference to the position to stake
     /// * `clock` - Reference to the Sui clock for timestamp verification
     ///
     /// # Aborts
@@ -3239,14 +3194,19 @@ module clmm_pool::pool {
     public fun stake_in_fullsail_distribution<CoinTypeA, CoinTypeB>(
         pool: &mut Pool<CoinTypeA, CoinTypeB>,
         gauge_cap: &gauge_cap::gauge_cap::GaugeCap, 
-        liquidity: u128,
-        tick_lower: integer_mate::i32::I32,
-        tick_upper: integer_mate::i32::I32,
+        position: &clmm_pool::position::Position,
         clock: &sui::clock::Clock
     ) {
         assert!(!pool.is_pause, EPoolPaused);
+
+        let liquidity = position.liquidity();
         assert!(liquidity != 0, EZeroLiquidity);
         check_gauge_cap<CoinTypeA, CoinTypeB>(pool, gauge_cap);
+
+        let position_id = sui::object::id<clmm_pool::position::Position>(position);
+        clmm_pool::position::validate_position_exists(&pool.position_manager, position_id);
+
+        let (tick_lower, tick_upper) = position.tick_range();
         update_fullsail_distribution_internal<CoinTypeA, CoinTypeB>(
             pool,
             integer_mate::i128::from(liquidity),
@@ -3254,6 +3214,8 @@ module clmm_pool::pool {
             tick_upper,
             clock
         );
+
+        clmm_pool::position::mark_position_staked(&mut pool.position_manager, position_id, true);
     }
 
     /// Returns the amount of tokens sent in the swap step.
@@ -3615,9 +3577,7 @@ module clmm_pool::pool {
     /// # Arguments
     /// * `pool` - Mutable reference to the pool
     /// * `gauge_cap` - Reference to the gauge capability for access control verification
-    /// * `liquidity` - Amount of liquidity to remove
-    /// * `tick_lower` - Lower tick boundary for the position
-    /// * `tick_upper` - Upper tick boundary for the position
+    /// * `position` - Reference to the position to unstake
     /// * `clock` - Reference to the Sui clock for timestamp verification
     /// 
     /// # Aborts
@@ -3627,21 +3587,27 @@ module clmm_pool::pool {
     public fun unstake_from_fullsail_distribution<CoinTypeA, CoinTypeB>(
         pool: &mut Pool<CoinTypeA, CoinTypeB>,
         gauge_cap: &gauge_cap::gauge_cap::GaugeCap,
-        liquidity: u128,
-        tick_lower: integer_mate::i32::I32,
-        tick_upper: integer_mate::i32::I32,
+        position: &clmm_pool::position::Position,
         clock: &sui::clock::Clock
     ) {
         assert!(!pool.is_pause, EPoolPaused);
-        assert!(liquidity != 0, EZeroUnstakeLiquidity);
         check_gauge_cap<CoinTypeA, CoinTypeB>(pool, gauge_cap);
-        update_fullsail_distribution_internal<CoinTypeA, CoinTypeB>(
-            pool,
-            integer_mate::i128::neg(integer_mate::i128::from(liquidity)),
-            tick_lower,
-            tick_upper,
-            clock
-        );
+        let position_id = sui::object::id<clmm_pool::position::Position>(position);
+        clmm_pool::position::validate_position_exists(&pool.position_manager, position_id);
+
+        let liquidity = position.liquidity();
+        if (liquidity > 0) {
+            let (tick_lower, tick_upper) = position.tick_range();
+            update_fullsail_distribution_internal<CoinTypeA, CoinTypeB>(
+                pool,
+                integer_mate::i128::neg(integer_mate::i128::from(liquidity)),
+                tick_lower,
+                tick_upper,
+                clock
+            );
+        };
+
+        clmm_pool::position::mark_position_staked(&mut pool.position_manager, position_id, false);
     }
     
     /// Updates the global fee growth for the pool, distributing fees among all liquidity positions.

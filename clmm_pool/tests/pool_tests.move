@@ -3926,7 +3926,7 @@ module clmm_pool::pool_tests {
                 &mut vault,
                 &mut pool,
                 &mut position,
-                100000000,  // delta_liquidity
+                100000000-1000,  // delta_liquidity
                 &clock
             );
 
@@ -3942,6 +3942,38 @@ module clmm_pool::pool_tests {
                 balance_a,
                 balance_b,
                 receipt
+            );
+
+           let mut position2 = pool::open_position<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut pool,
+                100,  // tick_lower
+                200,  // tick_upper
+                scenario.ctx()
+            );
+
+            // Add liquidity to the position
+            let receipt2 = pool::add_liquidity<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut vault,
+                &mut pool,
+                &mut position2,
+                1000,  // delta_liquidity
+                &clock
+            );
+
+            let (pay_amount2_a, pay_amount2_b) = receipt2.add_liquidity_pay_amount();
+            let coin_a2 = sui::coin::mint_for_testing<TestCoinB>(pay_amount2_a, scenario.ctx());
+            let coin_b2 = sui::coin::mint_for_testing<TestCoinA>(pay_amount2_b, scenario.ctx());
+            let balance2_a = coin_a2.into_balance<TestCoinB>();
+            let balance2_b = coin_b2.into_balance<TestCoinA>();
+
+            pool::repay_add_liquidity<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut pool,
+                balance2_a,
+                balance2_b,
+                receipt2
             );
 
             let (balance_a, balance_b, swap_receipt) = pool::flash_swap_internal_test<TestCoinB, TestCoinA>(
@@ -3977,9 +4009,7 @@ module clmm_pool::pool_tests {
             pool::stake_in_fullsail_distribution<TestCoinB, TestCoinA>(
                 &mut pool,
                 &gauge_cap,
-                1000,  // liquidity
-                integer_mate::i32::from(100),  // tick_lower
-                integer_mate::i32::from(200),  // tick_upper
+                &position2,
                 &clock
             );
 
@@ -4013,15 +4043,15 @@ module clmm_pool::pool_tests {
             assert!(fullsail_distribution_growth == 18446744073709551616, 15);
 
             // Calculate and update fullsail distribution
-            let position_id = sui::object::id(&position);
+            let position2_id = sui::object::id(&position2);
             let fullsail_amount = pool::calculate_and_update_fullsail_distribution<TestCoinB, TestCoinA>(
                 &global_config,
                 &mut pool,
-                position_id
+                position2_id
             );
 
             // Verify fullsail amount is non-zero
-            assert!(fullsail_amount == 100000000, 1);
+            assert!(fullsail_amount == 1000, 1);
             
             // Return objects to scenario
             pool::destroy_flash_swap_receipt<TestCoinB, TestCoinA>(swap_receipt);
@@ -4032,6 +4062,7 @@ module clmm_pool::pool_tests {
             sui::coin::from_balance(balance_a2, scenario.ctx()).burn_for_testing();
             transfer::public_transfer(pool, admin);
             transfer::public_transfer(position, admin);
+            transfer::public_transfer(position2, admin);
             test_scenario::return_shared(stats);
             test_scenario::return_shared(price_provider);
             test_scenario::return_shared(vault);
@@ -4196,8 +4227,8 @@ module clmm_pool::pool_tests {
             let mut position = pool::open_position<TestCoinB, TestCoinA>(
                 &global_config,
                 &mut pool,
-                0,  // tick_lower
-                100,  // tick_upper
+                100,  // tick_lower
+                200,  // tick_upper
                 scenario.ctx()
             );
 
@@ -4207,7 +4238,7 @@ module clmm_pool::pool_tests {
                 &mut vault,
                 &mut pool,
                 &mut position,
-                1000000000,  // delta_liquidity
+                1000,  // delta_liquidity
                 &clock
             );
 
@@ -4215,9 +4246,7 @@ module clmm_pool::pool_tests {
             pool::stake_in_fullsail_distribution<TestCoinB, TestCoinA>(
                 &mut pool,
                 &gauge_cap,
-                1000,  // liquidity
-                integer_mate::i32::from(100),  // tick_lower
-                integer_mate::i32::from(200),  // tick_upper
+                &position,
                 &clock
             );
 
@@ -4416,7 +4445,25 @@ module clmm_pool::pool_tests {
                 &mut vault,
                 &mut pool,
                 &mut position,
-                1000000000,  // delta_liquidity
+                500,  // delta_liquidity
+                &clock
+            );
+
+            let mut position2 = pool::open_position<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut pool,
+                100,  // tick_lower
+                200,  // tick_upper
+                scenario.ctx()
+            );
+
+            // Add liquidity to the position
+            let receipt2 = pool::add_liquidity<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut vault,
+                &mut pool,
+                &mut position2,
+                500,  // delta_liquidity
                 &clock
             );
 
@@ -4424,16 +4471,15 @@ module clmm_pool::pool_tests {
             pool::stake_in_fullsail_distribution<TestCoinB, TestCoinA>(
                 &mut pool,
                 &gauge_cap,
-                1000,  // liquidity
-                i32::from(100),  // tick_lower
-                i32::from(200),  // tick_upper
+                &position,
                 &clock
             );
 
-            pool::mark_position_staked<TestCoinB, TestCoinA>(
+            pool::stake_in_fullsail_distribution<TestCoinB, TestCoinA>(
                 &mut pool,
                 &gauge_cap,
-                sui::object::id(&position)
+                &position2,
+                &clock
             );
 
             // Verify initial staked liquidity
@@ -4444,9 +4490,7 @@ module clmm_pool::pool_tests {
             pool::unstake_from_fullsail_distribution<TestCoinB, TestCoinA>(
                 &mut pool,
                 &gauge_cap,
-                500,  // liquidity to unstake
-                i32::from(100),  // tick_lower
-                i32::from(200),  // tick_upper
+                &position2,
                 &clock
             );
 
@@ -4455,7 +4499,7 @@ module clmm_pool::pool_tests {
             assert!(final_staked_liquidity == 500, 2);
 
             let tick = pool::borrow_tick<TestCoinB, TestCoinA>(&pool, i32::from(100));
-            assert!(tick.liquidity_gross() == 1000000000, 3);
+            assert!(tick.liquidity_gross() == 1000, 3);
             assert!(tick.fullsail_distribution_staked_liquidity_net().eq(integer_mate::i128::from(500)), 4);
 
             let ticks = pool::fetch_ticks<TestCoinB, TestCoinA>(
@@ -4464,16 +4508,18 @@ module clmm_pool::pool_tests {
                 2
             );
             assert!(ticks.length() == 2, 5);
-            assert!(ticks[0].liquidity_gross() == 1000000000, 6);
-            assert!(ticks[1].liquidity_gross() == 1000000000, 7);
+            assert!(ticks[0].liquidity_gross() == 1000, 6);
+            assert!(ticks[1].liquidity_gross() == 1000, 7);
             assert!(ticks[0].index().eq(integer_mate::i32::from(100)), 8);
             assert!(ticks[1].index().eq(integer_mate::i32::from(200)), 9);
             
 
             // Return objects to scenario
             pool::destroy_receipt<TestCoinB, TestCoinA>(receipt);
+            pool::destroy_receipt<TestCoinB, TestCoinA>(receipt2);
             transfer::public_transfer(pool, admin);
             transfer::public_transfer(position, admin);
+            transfer::public_transfer(position2, admin);
             transfer::public_transfer(gauge_cap, admin);
             transfer::public_transfer(create_gauge_cap, admin);
             test_scenario::return_shared(global_config);
@@ -4568,9 +4614,7 @@ module clmm_pool::pool_tests {
             pool::stake_in_fullsail_distribution<TestCoinB, TestCoinA>(
                 &mut pool,
                 &gauge_cap,
-                1000,  // liquidity
-                i32::from(100),  // tick_lower
-                i32::from(200),  // tick_upper
+                &position,
                 &clock
             );
 
@@ -4581,9 +4625,7 @@ module clmm_pool::pool_tests {
             pool::unstake_from_fullsail_distribution<TestCoinB, TestCoinA>(
                 &mut pool,
                 &gauge_cap,
-                500,  // liquidity to unstake
-                i32::from(100),  // tick_lower
-                i32::from(200),  // tick_upper
+                &position,
                 &clock
             );
 
@@ -6216,9 +6258,7 @@ module clmm_pool::pool_tests {
             pool::stake_in_fullsail_distribution<TestCoinB, TestCoinA>(
                 &mut pool,
                 &gauge_cap,
-                1000000, // liquidity
-                integer_mate::i32::from(0), // tick_lower
-                integer_mate::i32::from(100), // tick_upper
+                &position,
                 &clock
             );
 
@@ -6350,9 +6390,7 @@ module clmm_pool::pool_tests {
             pool::stake_in_fullsail_distribution<TestCoinB, TestCoinA>(
                 &mut pool,
                 &gauge_cap,
-                90<<64,  // liquidity
-                integer_mate::i32::from(100),  // tick_lower
-                integer_mate::i32::from(200),  // tick_upper
+                &position,
                 &clock
             );
 
