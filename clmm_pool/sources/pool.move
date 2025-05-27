@@ -1280,8 +1280,7 @@ module clmm_pool::pool {
         unstaked_fee_rate: u64
     ): (u128, u64) {
         if (
-            total_liquidity <= 0 ||
-            (total_liquidity - staked_liquidity) <= 0
+            staked_liquidity >= total_liquidity
         ) {
             (0, fee_amount)
         } else {
