@@ -45,12 +45,12 @@ module clmm_pool::pool {
     const EPositionPoolIdMismatch: u64 = 922337380638130175;
     const EInvalidTickRange: u64 = 922337894745715507;
     const ELiquidityAdditionOverflow: u64 = 922337903335787727;
-    const EZeroUnstakeLiquidity: u64 = 922337920086022553;
     const EGaugerIdNotFound: u64 = 922337929534950604;
     const EInvalidGaugeCap: u64 = 922337935547904819;
     const EPoolNotPaused: u64 = 922337820442781286;
     const EPoolAlreadyPaused: u64 = 922337673984396492;
     const EInsufficientStakedLiquidity: u64 = 922337902476656639;
+    const EInvalidSyncFullsailDistributionTime: u64 = 932630496306302321;
 
     public struct POOL has drop {}
 
@@ -3498,10 +3498,12 @@ module clmm_pool::pool {
         gauge_cap: &gauge_cap::gauge_cap::GaugeCap,
         distribution_rate: u128,
         distribution_reserve: u64,
-        period_finish: u64
+        period_finish: u64,
+        clock: &sui::clock::Clock
     ) {
         assert!(!pool.is_pause, EPoolPaused);
         check_gauge_cap<CoinTypeA, CoinTypeB>(pool, gauge_cap);
+        assert!(pool.fullsail_distribution_last_updated == clock.timestamp_ms() / 1000, EInvalidSyncFullsailDistributionTime);
         pool.fullsail_distribution_rate = distribution_rate;
         pool.fullsail_distribution_reserve = distribution_reserve;
         pool.fullsail_distribution_period_finish = period_finish;
@@ -3582,7 +3584,6 @@ module clmm_pool::pool {
     /// 
     /// # Aborts
     /// * If the pool is paused (error code: EPoolPaused)
-    /// * If the liquidity amount is zero (error code: EZeroUnstakeLiquidity)
     /// * If gauge capability verification fails
     public fun unstake_from_fullsail_distribution<CoinTypeA, CoinTypeB>(
         pool: &mut Pool<CoinTypeA, CoinTypeB>,

@@ -4018,7 +4018,8 @@ module clmm_pool::pool_tests {
                 &gauge_cap,
                 1000<<64,
                 1000,
-                100
+                100,
+                &clock
             );
 
             clock::increment_for_testing(&mut clock, 10000);
@@ -4255,7 +4256,8 @@ module clmm_pool::pool_tests {
                 &gauge_cap,
                 1000<<64,
                 100000,
-                100
+                100,
+                &clock
             );
 
             clock::increment_for_testing(&mut clock, 1000000);
