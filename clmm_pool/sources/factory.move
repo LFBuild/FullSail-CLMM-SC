@@ -492,17 +492,17 @@ module clmm_pool::factory {
     /// * If the coin types are in lexicographical order (error code: EInvalidCoinOrder)
     public fun new_pool_key<CoinTypeA, CoinTypeB>(tick_spacing: u32): sui::object::ID {
         let type_name_a = std::type_name::into_string(std::type_name::get<CoinTypeA>());
+        let bytes_type_name_a = *std::ascii::as_bytes(&type_name_a);
         let mut bytes_a = *std::ascii::as_bytes(&type_name_a);
-        let bytes_a_len = std::vector::length<u8>(&bytes_a);
         let type_name_b = std::type_name::into_string(std::type_name::get<CoinTypeB>());
         let bytes_b = std::ascii::as_bytes(&type_name_b);
         let mut index = 0;
         let mut swapped = false;
         while (index < std::vector::length<u8>(bytes_b)) {
             let byte_b = *std::vector::borrow<u8>(bytes_b, index);
-            let should_compare = !swapped && index < bytes_a_len;
+            let should_compare = !swapped && index < std::vector::length<u8>(&bytes_type_name_a);
             if (should_compare) {
-                let byte_a = *std::vector::borrow<u8>(&bytes_a, index);
+                let byte_a = *std::vector::borrow<u8>(&bytes_type_name_a, index);
                 if (byte_a < byte_b) {
                     abort EInvalidCoinOrder
                 };
@@ -515,14 +515,12 @@ module clmm_pool::factory {
             continue;
         };
         if (!swapped) {
-            if (bytes_a_len < std::vector::length<u8>(bytes_b)) {
+            if (std::vector::length<u8>(&bytes_type_name_a) < std::vector::length<u8>(bytes_b)) {
                 abort EInvalidBytesLength
             };
         };
-
-        let mut bytes_id = *std::ascii::as_bytes(&type_name_a);
-        std::vector::append<u8>(&mut bytes_id, sui::bcs::to_bytes<u32>(&tick_spacing));
-        sui::object::id_from_bytes(sui::hash::blake2b256(&bytes_id))
+        std::vector::append<u8>(&mut bytes_a, sui::bcs::to_bytes<u32>(&tick_spacing));
+        sui::object::id_from_bytes(sui::hash::blake2b256(&bytes_a))
     }
 
     /// Returns the ID of a pool from its simple info.

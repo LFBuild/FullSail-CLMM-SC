@@ -12,6 +12,7 @@ module clmm_pool::factory_tests {
     public struct TestCoinA has drop {}
     public struct TestCoinA0 has drop {}
     public struct TestCoinB has drop {}
+    public struct TestCoinC has drop {}
 
     #[test]
     fun test_new_pool_key_same_coin_types() {
@@ -89,7 +90,20 @@ module clmm_pool::factory_tests {
             let clock = clock::create_for_testing(scenario.ctx());
             
             // Create a new pool with TestCoinB and TestCoinA
-            let pool = factory::create_pool_<TestCoinB, TestCoinA>(
+            let pool = factory::create_pool_<TestCoinC, TestCoinB>(
+                &mut pools,
+                &global_config,
+                1, // tick_spacing
+                79228162514264337593543950336 >> 32, // current_sqrt_price (1.0)
+                std::string::utf8(b""), // url
+                @0x2, // feed_id_coin_a
+                @0x3, // feed_id_coin_b
+                true, // auto_calculation_volumes
+                &clock,
+                scenario.ctx()
+            );
+
+            let pool2 = factory::create_pool_<TestCoinC, TestCoinA>(
                 &mut pools,
                 &global_config,
                 1, // tick_spacing
@@ -107,6 +121,7 @@ module clmm_pool::factory_tests {
             
             // Return objects to scenario
             transfer::public_transfer(pool, admin);
+            transfer::public_transfer(pool2, admin);
             test_scenario::return_shared(pools);
             test_scenario::return_shared(global_config);
             clock::destroy_for_testing(clock);
