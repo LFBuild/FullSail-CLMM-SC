@@ -191,4 +191,43 @@ module integer_mate::math_u128 {
         let (r, o) = overflowing_mul(MAX_U128, 10);
         assert!(r == 0xfffffffffffffffffffffffffffffff6 && o == true, 0);
     }
+
+    #[test]
+    fun test_greater_or_equal_overflowing() {
+        // Test 1: Both numbers are positive
+        assert!(greater_or_equal_overflowing(100, 50), 1);
+        assert!(greater_or_equal_overflowing(50, 50), 2);
+        assert!(!greater_or_equal_overflowing(50, 100), 3);
+
+        // Test 2: Both numbers are negative
+        let neg1 = 0x80000000000000000000000000000001; // 2^127 + 1
+        let neg2 = 0x80000000000000000000000000000002; // 2^127 + 2
+        assert!(!greater_or_equal_overflowing(neg1, neg2), 4);
+        assert!(greater_or_equal_overflowing(neg2, neg1), 5);
+        assert!(greater_or_equal_overflowing(neg1, neg1), 6);
+
+        // Test 3: One number is positive, the other is negative
+        let pos = 100;
+        let neg = 0x80000000000000000000000000000001;
+        assert!(greater_or_equal_overflowing(pos, neg), 7);
+        assert!(!greater_or_equal_overflowing(neg, pos), 8);
+
+        // Test 4: Edge cases with maximum values
+        let min_neg = 0xffffffffffffffffffffffffffffffff; // 2^128 - 1
+        let max_neg = 0x80000000000000000000000000000000; // 2^127
+        assert!(!greater_or_equal_overflowing(max_neg, min_neg), 9);
+        assert!(greater_or_equal_overflowing(min_neg, max_neg), 10);
+
+        // Test 5: Comparison with zero
+        let neg = 0x80000000000000000000000000000001;
+        assert!(!greater_or_equal_overflowing(neg, 0), 11);
+        assert!(greater_or_equal_overflowing(0, neg), 12);
+        assert!(greater_or_equal_overflowing(0, 0), 13);
+
+        // Test 6: Edge cases with transition through 2^127
+        let before_127 = 0x7fffffffffffffffffffffffffffffff; // 2^127 - 1
+        let after_127 = 0x80000000000000000000000000000000; // 2^127
+        assert!(greater_or_equal_overflowing(before_127, after_127), 14);
+        assert!(!greater_or_equal_overflowing(after_127, before_127), 15);
+    }
 }

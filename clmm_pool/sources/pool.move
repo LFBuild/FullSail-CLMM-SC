@@ -45,12 +45,12 @@ module clmm_pool::pool {
     const EPositionPoolIdMismatch: u64 = 922337380638130175;
     const EInvalidTickRange: u64 = 922337894745715507;
     const ELiquidityAdditionOverflow: u64 = 922337903335787727;
-    const EZeroUnstakeLiquidity: u64 = 922337920086022553;
     const EGaugerIdNotFound: u64 = 922337929534950604;
     const EInvalidGaugeCap: u64 = 922337935547904819;
     const EPoolNotPaused: u64 = 922337820442781286;
     const EPoolAlreadyPaused: u64 = 922337673984396492;
     const EInsufficientStakedLiquidity: u64 = 922337902476656639;
+    const EInvalidSyncFullsailDistributionTime: u64 = 932630496306302321;
 
     public struct POOL has drop {}
 
@@ -709,28 +709,6 @@ module clmm_pool::pool {
         pool.liquidity
     }
 
-    /// Marks a position as staked in the pool.
-    /// This function can only be called if the pool is not paused.
-    ///
-    /// # Arguments
-    /// * `pool` - The pool containing the position
-    /// * `gauge_cap` - The gauge capability for the position
-    /// * `position_id` - The ID of the position to mark as staked
-    ///
-    /// # Aborts
-    /// If the pool is paused (error code: EPoolPaused)
-    public fun mark_position_staked<CoinTypeA, CoinTypeB>(
-        pool: &mut Pool<CoinTypeA, CoinTypeB>,
-        gauge_cap: &gauge_cap::gauge_cap::GaugeCap,
-        position_id: sui::object::ID
-    ) {
-        assert!(!pool.is_pause, EPoolPaused);
-        check_gauge_cap<CoinTypeA, CoinTypeB>(pool, gauge_cap);
-        clmm_pool::position::validate_position_exists(&pool.position_manager, position_id);
-
-        clmm_pool::position::mark_position_staked(&mut pool.position_manager, position_id, true);
-    }
-
     /// Opens a new position in the pool with the specified tick range.
     /// This function can only be called if the pool is not paused.
     ///
@@ -1295,14 +1273,15 @@ module clmm_pool::pool {
     /// A tuple containing:
     /// * The amount of fees allocated to staked liquidity providers
     /// * The amount of fees allocated to unstaked liquidity providers
-    fun calculate_fees<CoinTypeA, CoinTypeB>(
-        pool: &Pool<CoinTypeA, CoinTypeB>,
+    fun calculate_fees(
         fee_amount: u64,
         total_liquidity: u128,
         staked_liquidity: u128,
         unstaked_fee_rate: u64
     ): (u128, u64) {
-        if (total_liquidity == pool.fullsail_distribution_staked_liquidity) {
+        if (
+            staked_liquidity >= total_liquidity
+        ) {
             (0, fee_amount)
         } else {
             let (staked_fee, unstaked_fee) = if (staked_liquidity == 0) {
@@ -1312,6 +1291,7 @@ module clmm_pool::pool {
                 let (staked_amount, unstaked_fee_amount) = split_fees(fee_amount, total_liquidity, staked_liquidity, unstaked_fee_rate);
                 (integer_mate::full_math_u128::mul_div_floor(staked_amount as u128, Q64, total_liquidity - staked_liquidity), unstaked_fee_amount)
             };
+
             (staked_fee, unstaked_fee)
         }
     }
@@ -1520,8 +1500,7 @@ module clmm_pool::pool {
                         protocol_fee = protocol_fee_amount;
                         let fee_after_protocol = remaining_fee - protocol_fee_amount;
                         if (fee_after_protocol > 0) {
-                            let (_, gauge_fee_amount) = calculate_fees<CoinTypeA, CoinTypeB>(
-                                pool,
+                            let (_, gauge_fee_amount) = calculate_fees(
                                 fee_after_protocol,
                                 pool.liquidity,
                                 pool.fullsail_distribution_staked_liquidity,
@@ -1536,8 +1515,7 @@ module clmm_pool::pool {
                         clmm_pool::config::protocol_fee_rate(global_config),
                         clmm_pool::config::protocol_fee_rate_denom()
                     );
-                    (_, gauge_fee) = calculate_fees<CoinTypeA, CoinTypeB>(
-                        pool,
+                    (_, gauge_fee) = calculate_fees(
                         fee_amount - protocol_fee,
                         pool.liquidity,
                         pool.fullsail_distribution_staked_liquidity,
@@ -2776,27 +2754,6 @@ module clmm_pool::pool {
         }
     }
 
-    /// Marks a position as unstaked in the fullsail distribution system.
-    ///
-    /// # Arguments
-    /// * `pool` - Reference to the pool containing the position
-    /// * `gauge_cap` - Reference to the gauge capability
-    /// * `position_id` - ID of the position to mark as unstaked
-    ///
-    /// # Aborts
-    /// * If the pool is paused (error code: EPoolPaused)
-    public fun mark_position_unstaked<CoinTypeA, CoinTypeB>(
-        pool: &mut Pool<CoinTypeA, CoinTypeB>,
-        gauge_cap: &gauge_cap::gauge_cap::GaugeCap,
-        position_id: sui::object::ID
-    ) {
-        assert!(!pool.is_pause, EPoolPaused);
-        check_gauge_cap<CoinTypeA, CoinTypeB>(pool, gauge_cap);
-        clmm_pool::position::validate_position_exists(&pool.position_manager, position_id);
-
-        clmm_pool::position::mark_position_staked(&mut pool.position_manager, position_id, false);
-    }
-
     /// Pauses the pool, preventing all operations except unpausing.
     /// This function can only be called by the pool manager role.
     ///
@@ -3186,13 +3143,13 @@ module clmm_pool::pool {
     }
 
     /// Splits fees between staked and unstaked portions of liquidity.
-    /// Calculates fee distribution based on growth inside and outside the given tick range,
+    /// Calculates fee distribution based on total liquidity and staked liquidity amounts,
     /// and takes into account the unstaked fee rate.
     ///
     /// # Arguments
     /// * `fee_amount` - Total fee amount to be distributed
-    /// * `total_growth` - Total fee growth in the pool
-    /// * `growth_inside` - Fee growth inside the given tick range
+    /// * `total_liquidity` - Total liquidity in the pool
+    /// * `staked_liquidity` - Amount of staked liquidity
     /// * `unstaked_fee_rate` - Fee rate for unstaked liquidity
     ///
     /// # Returns
@@ -3201,20 +3158,21 @@ module clmm_pool::pool {
     /// * Second value - fee amount for unstaked liquidity
     fun split_fees(
         fee_amount: u64,
-        total_growth: u128,
-        growth_inside: u128,
+        total_liquidity: u128,
+        staked_liquidity: u128,
         unstaked_fee_rate: u64
     ): (u64, u64) {
-        let inside_amount = integer_mate::full_math_u128::mul_div_ceil(
+        let staked_fee_amount = integer_mate::full_math_u128::mul_div_ceil(
             fee_amount as u128,
-            growth_inside,
-            total_growth
+            staked_liquidity,
+            total_liquidity
         );
         let (staked_amount, unstaked_amount) = apply_unstaked_fees(
-            (fee_amount as u128) - inside_amount,
-            inside_amount,
+            (fee_amount as u128) - staked_fee_amount,
+            staked_fee_amount,
             unstaked_fee_rate
         );
+
         (staked_amount as u64, unstaked_amount as u64)
     }
 
@@ -3225,9 +3183,7 @@ module clmm_pool::pool {
     /// # Arguments
     /// * `pool` - Mutable reference to the pool where liquidity will be staked
     /// * `gauge_cap` - Reference to the gauge capability for authorization
-    /// * `liquidity` - Amount of liquidity to stake
-    /// * `tick_lower` - Lower bound of the tick range for staking
-    /// * `tick_upper` - Upper bound of the tick range for staking
+    /// * `position` - Reference to the position to stake
     /// * `clock` - Reference to the Sui clock for timestamp verification
     ///
     /// # Aborts
@@ -3237,14 +3193,19 @@ module clmm_pool::pool {
     public fun stake_in_fullsail_distribution<CoinTypeA, CoinTypeB>(
         pool: &mut Pool<CoinTypeA, CoinTypeB>,
         gauge_cap: &gauge_cap::gauge_cap::GaugeCap, 
-        liquidity: u128,
-        tick_lower: integer_mate::i32::I32,
-        tick_upper: integer_mate::i32::I32,
+        position: &clmm_pool::position::Position,
         clock: &sui::clock::Clock
     ) {
         assert!(!pool.is_pause, EPoolPaused);
+
+        let liquidity = position.liquidity();
         assert!(liquidity != 0, EZeroLiquidity);
         check_gauge_cap<CoinTypeA, CoinTypeB>(pool, gauge_cap);
+
+        let position_id = sui::object::id<clmm_pool::position::Position>(position);
+        clmm_pool::position::validate_position_exists(&pool.position_manager, position_id);
+
+        let (tick_lower, tick_upper) = position.tick_range();
         update_fullsail_distribution_internal<CoinTypeA, CoinTypeB>(
             pool,
             integer_mate::i128::from(liquidity),
@@ -3252,6 +3213,8 @@ module clmm_pool::pool {
             tick_upper,
             clock
         );
+
+        clmm_pool::position::mark_position_staked(&mut pool.position_manager, position_id, true);
     }
 
     /// Returns the amount of tokens sent in the swap step.
@@ -3440,8 +3403,7 @@ module clmm_pool::pool {
                     let remaining_fee_after_protocol = remaining_fee - protocol_fee_amount;
                     fee_after_protocol = remaining_fee_after_protocol;
                     if (remaining_fee_after_protocol > 0) {
-                        let (_, gauge_fee_amount) = calculate_fees<CoinTypeA, CoinTypeB>(
-                            pool, 
+                        let (_, gauge_fee_amount) = calculate_fees(
                             remaining_fee_after_protocol, 
                             pool.liquidity, 
                             pool.fullsail_distribution_staked_liquidity, 
@@ -3535,10 +3497,12 @@ module clmm_pool::pool {
         gauge_cap: &gauge_cap::gauge_cap::GaugeCap,
         distribution_rate: u128,
         distribution_reserve: u64,
-        period_finish: u64
+        period_finish: u64,
+        clock: &sui::clock::Clock
     ) {
         assert!(!pool.is_pause, EPoolPaused);
         check_gauge_cap<CoinTypeA, CoinTypeB>(pool, gauge_cap);
+        assert!(pool.fullsail_distribution_last_updated == clock.timestamp_ms() / 1000, EInvalidSyncFullsailDistributionTime);
         pool.fullsail_distribution_rate = distribution_rate;
         pool.fullsail_distribution_reserve = distribution_reserve;
         pool.fullsail_distribution_period_finish = period_finish;
@@ -3614,33 +3578,36 @@ module clmm_pool::pool {
     /// # Arguments
     /// * `pool` - Mutable reference to the pool
     /// * `gauge_cap` - Reference to the gauge capability for access control verification
-    /// * `liquidity` - Amount of liquidity to remove
-    /// * `tick_lower` - Lower tick boundary for the position
-    /// * `tick_upper` - Upper tick boundary for the position
+    /// * `position` - Reference to the position to unstake
     /// * `clock` - Reference to the Sui clock for timestamp verification
     /// 
     /// # Aborts
     /// * If the pool is paused (error code: EPoolPaused)
-    /// * If the liquidity amount is zero (error code: EZeroUnstakeLiquidity)
     /// * If gauge capability verification fails
     public fun unstake_from_fullsail_distribution<CoinTypeA, CoinTypeB>(
         pool: &mut Pool<CoinTypeA, CoinTypeB>,
         gauge_cap: &gauge_cap::gauge_cap::GaugeCap,
-        liquidity: u128,
-        tick_lower: integer_mate::i32::I32,
-        tick_upper: integer_mate::i32::I32,
+        position: &clmm_pool::position::Position,
         clock: &sui::clock::Clock
     ) {
         assert!(!pool.is_pause, EPoolPaused);
-        assert!(liquidity != 0, EZeroUnstakeLiquidity);
         check_gauge_cap<CoinTypeA, CoinTypeB>(pool, gauge_cap);
-        update_fullsail_distribution_internal<CoinTypeA, CoinTypeB>(
-            pool,
-            integer_mate::i128::neg(integer_mate::i128::from(liquidity)),
-            tick_lower,
-            tick_upper,
-            clock
-        );
+        let position_id = sui::object::id<clmm_pool::position::Position>(position);
+        clmm_pool::position::validate_position_exists(&pool.position_manager, position_id);
+
+        let liquidity = position.liquidity();
+        if (liquidity > 0) {
+            let (tick_lower, tick_upper) = position.tick_range();
+            update_fullsail_distribution_internal<CoinTypeA, CoinTypeB>(
+                pool,
+                integer_mate::i128::neg(integer_mate::i128::from(liquidity)),
+                tick_lower,
+                tick_upper,
+                clock
+            );
+        };
+
+        clmm_pool::position::mark_position_staked(&mut pool.position_manager, position_id, false);
     }
     
     /// Updates the global fee growth for the pool, distributing fees among all liquidity positions.

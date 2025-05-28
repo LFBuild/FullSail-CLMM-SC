@@ -82,7 +82,6 @@ module clmm_pool::config {
     /// * `fee_tiers` - Map of fee tiers indexed by tick spacing
     /// * `acl` - Access control list for protocol roles
     /// * `package_version` - Current version of the protocol package
-    /// * `alive_gauges` - Set of active gauge IDs
     public struct GlobalConfig has store, key {
         id: sui::object::UID,
         protocol_fee_rate: u64,
@@ -90,7 +89,6 @@ module clmm_pool::config {
         fee_tiers: sui::vec_map::VecMap<u32, FeeTier>,
         acl: clmm_pool::acl::ACL,
         package_version: u64,
-        alive_gauges: sui::vec_set::VecSet<sui::object::ID>,
     }
 
     /// Event emitted when the configuration is initialized.
@@ -472,17 +470,6 @@ module clmm_pool::config {
         sui::vec_map::get<u32, FeeTier>(&config.fee_tiers, &tick_spacing).fee_rate
     }
 
-    /// Returns the protocol fee rate.
-    /// 
-    /// # Arguments
-    /// * `config` - Reference to the global configuration
-    /// 
-    /// # Returns
-    /// The protocol fee rate as a u64
-    public fun get_protocol_fee_rate(config: &GlobalConfig): u64 {
-        config.protocol_fee_rate
-    }
-
     /// Initializes the global configuration and creates the admin capability.
     /// 
     /// # Arguments
@@ -495,7 +482,6 @@ module clmm_pool::config {
             fee_tiers: sui::vec_map::empty<u32, FeeTier>(),
             acl: clmm_pool::acl::new(ctx),
             package_version: 1,
-            alive_gauges: sui::vec_set::empty<sui::object::ID>(),
         };
         let admin_cap = AdminCap { id: sui::object::new(ctx) };
         // permission without protocol fee claim
@@ -512,18 +498,6 @@ module clmm_pool::config {
         sui::transfer::transfer<AdminCap>(admin_cap, sui::tx_context::sender(ctx));
         sui::transfer::share_object<GlobalConfig>(global_config);
         sui::event::emit<InitConfigEvent>(init_event);
-    }
-
-    /// Checks if a gauge is currently active.
-    /// 
-    /// # Arguments
-    /// * `config` - Reference to the global configuration
-    /// * `gauge_id` - The ID of the gauge to check
-    /// 
-    /// # Returns
-    /// True if the gauge is active, false otherwise
-    public fun is_gauge_alive(config: &GlobalConfig, gauge_id: sui::object::ID): bool {
-        sui::vec_set::contains<sui::object::ID>(&config.alive_gauges, &gauge_id)
     }
 
     /// Returns the maximum allowed fee rate.
@@ -642,54 +616,6 @@ module clmm_pool::config {
         sui::event::emit<UpdateFeeTierEvent>(event);
     }
 
-    /// Updates the liveness status of gauges.
-    /// 
-    /// # Arguments
-    /// * `global_config` - Mutable reference to the global configuration
-    /// * `gauge_ids` - Vector of gauge IDs to update
-    /// * `is_alive` - Whether the gauges should be marked as alive
-    /// * `ctx` - Mutable reference to the transaction context
-    /// 
-    /// # Abort Conditions
-    /// * If the gauge IDs vector is empty
-    /// * If the caller does not have pool manager role
-    public fun update_gauge_liveness(
-        global_config: &mut GlobalConfig,
-        gauge_ids: vector<sui::object::ID>,
-        is_alive: bool,
-        ctx: &sui::tx_context::TxContext
-    ) {
-        let mut index = 0;
-        let length = std::vector::length<sui::object::ID>(&gauge_ids);
-        checked_package_version(global_config);
-        check_pool_manager_role(global_config, sui::tx_context::sender(ctx));
-        assert!(length > 0, EEmptyGaugeIds);
-
-        if (is_alive) {
-            while (index < length) {
-                if (!sui::vec_set::contains<sui::object::ID>(
-                    &global_config.alive_gauges,
-                    std::vector::borrow<sui::object::ID>(&gauge_ids, index)
-                )) {
-                    let gauge_id = *std::vector::borrow<sui::object::ID>(&gauge_ids, index);
-                    sui::vec_set::insert<sui::object::ID>(&mut global_config.alive_gauges, gauge_id);
-                };
-                index = index + 1;
-            };
-        } else {
-            while (index < length) {
-                if (sui::vec_set::contains<sui::object::ID>(
-                    &global_config.alive_gauges,
-                    std::vector::borrow<sui::object::ID>(&gauge_ids, index)
-                )) {
-                    let gauge_id = std::vector::borrow<sui::object::ID>(&gauge_ids, index);
-                    sui::vec_set::remove<sui::object::ID>(&mut global_config.alive_gauges, gauge_id);
-                };
-                index = index + 1;
-            };
-        };
-    }
-
     /// Updates the package version.
     /// 
     /// # Arguments
@@ -783,7 +709,6 @@ module clmm_pool::config {
             fee_tiers: sui::vec_map::empty<u32, FeeTier>(),
             acl: clmm_pool::acl::new(ctx),
             package_version: 1,
-            alive_gauges: sui::vec_set::empty<sui::object::ID>(),
         };
         let admin_cap = AdminCap { id: sui::object::new(ctx) };
         set_roles(&admin_cap, &mut global_config, sui::tx_context::sender(ctx), 27);
