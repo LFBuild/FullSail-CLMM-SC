@@ -19,11 +19,11 @@ Check [docs](./docs) for more details.
 - [price_provider](https://suivision.xyz/txblock/BP8hsrBNWZPc5tb29XZQzdc7gGPP1gBYyZUbZPUa6LJG?tab=Overview)
     - package: `0xb49be008cf304b1dae7e7ece661b5f1b0e15324bc1422ec8c73b10eb4a6dcb19`
     - PriceProvider: `0x854b2d2c0381bb656ec962f8b443eb082654384cf97885359d1956c7d76e33c9`
-- [clmm_pool](https://suivision.xyz/txblock/5PyoEGssH3okv5vQeuLb2AaVJAcJkpXu3iCAJqTF6dqa)
-    - package: `0x3a74a12271278416c937ef74a953b0807c6b21302774f05836a26054c7346290`
-    - Pools: `0x02a3dc7552f480031885a9e34d2dc4201df731bef0a1c9fb78b05aafa0781bda`
-    - RewarderGlobalVault `0x14722f0dd4f4e7fad10d357d327718b1a28c00d4c28a5057f20d6f19f9cc717a`
-    - GlobalConfig `0x619e1a6fdb067fb92ee17919ff7443a0dc7fbd2d9177056db44bfbf03a31a661`
-    - Stats `0x631cf81156de18e68935c76bf1f36d2a7958a233bb7bf091b59f3e8b6830564a`
-    - Partners `0x6d9ddedff07f0535ca098d75c1dc25b59731188612ae129e9c8e65ab559ccb65`
+- [clmm_pool](https://suivision.xyz/txblock/4HVyzZWudh3LZSWZawyN3ZPgqotKiZ7fzbC5cycuT1AB)
+    - package: `0xe74104c66dd9f16b3096db2cc00300e556aa92edc871be4bc052b5dfb80db239`
+    - Pools: `0x0efb954710df6648d090bdfa4a5e274843212d6eb3efe157ee465300086e3650`
+    - RewarderGlobalVault `0xfb971d3a2fb98bde74e1c30ba15a3d8bef60a02789e59ae0b91660aeed3e64e1`
+    - GlobalConfig `0xe93baa80cb570b3a494cbf0621b2ba96bc993926d34dc92508c9446f9a05d615`
+    - Stats `0x6822a33d1d971e040c32f7cc74507010d1fe786f7d06ab89135083ddb07d2dc2`
+    - Partners `0xd8bf42d4ab51ca7c938b44e0a83db4c1abe151ad36bb18e6934dce6ed299cbfd`
 
