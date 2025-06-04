@@ -85,7 +85,7 @@ module clmm_pool::pool_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 2)]
+    #[expected_failure(abort_code = tick_math::EInvalidSqrtPrice)]
     fun test_new_pool_invalid_sqrt_price() {
         let admin = @0x1;
         let mut scenario = test_scenario::begin(admin);
@@ -468,7 +468,7 @@ module clmm_pool::pool_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 0)]
+    #[expected_failure(abort_code = pool::EZeroAmount)]
     fun test_add_liquidity_fix_coin_zero_amount() {
         let admin = @0x1;
         let mut scenario = test_scenario::begin(admin);
@@ -544,7 +544,7 @@ module clmm_pool::pool_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 13)]
+    #[expected_failure(abort_code = pool::EPoolPaused)]
     fun test_add_liquidity_fix_coin_paused_pool() {
         let admin = @0x1;
         let mut scenario = test_scenario::begin(admin);
@@ -620,332 +620,6 @@ module clmm_pool::pool_tests {
             transfer::public_transfer(position, admin);
             test_scenario::return_shared(global_config);
             test_scenario::return_shared(vault);
-            clock::destroy_for_testing(clock);
-        };
-        
-        test_scenario::end(scenario);
-    }
-
-    #[test]
-    fun test_get_liquidity_from_amount_inside_range() {
-        let admin = @0x1;
-        let mut scenario = test_scenario::begin(admin);
-        
-        // Initialize factory and config
-        {
-            factory::test_init(scenario.ctx());
-            config::test_init(scenario.ctx());
-        };
-        
-        // Add fee tier
-        scenario.next_tx(admin);
-        {
-            let admin_cap = scenario.take_from_sender<config::AdminCap>();
-            let mut global_config = scenario.take_shared<config::GlobalConfig>();
-            config::add_fee_tier(&mut global_config, 1, 1000, scenario.ctx());
-            test_scenario::return_shared(global_config);
-            transfer::public_transfer(admin_cap, admin);
-        };
-        
-        scenario.next_tx(admin);
-        {
-            let global_config = scenario.take_shared<config::GlobalConfig>();
-            let clock = clock::create_for_testing(scenario.ctx());
-            
-            // Create a new pool with current_sqrt_price = 1.0025 (corresponds to tick = 25)
-            let mut pool = pool::new<TestCoinB, TestCoinA>(
-                1, // tick_spacing
-                (79228162514264337593543950336 >> 32) + 250000000000000u128, // current_sqrt_price (1.0025)
-                1000, // fee_rate
-                std::string::utf8(b""), // url
-                0, // pool_index
-                @0x2, // feed_id_coin_a
-                @0x3, // feed_id_coin_b
-                true, // auto_calculation_volumes
-                &clock,
-                scenario.ctx()
-            );
-
-            // Create a new position with tick_lower = 0 and tick_upper = 50
-            let position = pool::open_position<TestCoinB, TestCoinA>(
-                &global_config,
-                &mut pool,
-                0,  // tick_lower
-                50,  // tick_upper
-                scenario.ctx()
-            );
-
-            // Test get_liquidity_from_amount with fixed amount of coin A
-            let (liquidity_a, amount_a, amount_b) = pool::get_liquidity_from_amount(
-                i32::from_u32(0),  // tick_lower
-                i32::from_u32(50), // tick_upper
-                pool::current_tick_index(&pool),
-                pool::current_sqrt_price(&pool),
-                100,  // amount
-                true  // a2b
-            );
-            assert!(liquidity_a > 0, 1);
-            assert!(amount_a == 100, 2);
-            assert!(amount_b > 0, 3);
-
-            // Test get_liquidity_from_amount with fixed amount of coin B
-            let (liquidity_b, amount_a, amount_b) = pool::get_liquidity_from_amount(
-                i32::from_u32(0),  // tick_lower
-                i32::from_u32(50), // tick_upper
-                pool::current_tick_index(&pool),
-                pool::current_sqrt_price(&pool),
-                100,  // amount
-                false // a2b
-            );
-            assert!(liquidity_b > 0, 4);
-            assert!(amount_a > 0, 5);
-            assert!(amount_b == 100, 6);
-            
-            // Return objects to scenario
-            transfer::public_transfer(pool, admin);
-            transfer::public_transfer(position, admin);
-            test_scenario::return_shared(global_config);
-            clock::destroy_for_testing(clock);
-        };
-        
-        test_scenario::end(scenario);
-    }
-
-    #[test]
-    fun test_get_liquidity_from_amount_above_range() {
-        let admin = @0x1;
-        let mut scenario = test_scenario::begin(admin);
-        
-        // Initialize factory and config
-        {
-            factory::test_init(scenario.ctx());
-            config::test_init(scenario.ctx());
-        };
-        
-        // Add fee tier
-        scenario.next_tx(admin);
-        {
-            let admin_cap = scenario.take_from_sender<config::AdminCap>();
-            let mut global_config = scenario.take_shared<config::GlobalConfig>();
-            config::add_fee_tier(&mut global_config, 1, 1000, scenario.ctx());
-            test_scenario::return_shared(global_config);
-            transfer::public_transfer(admin_cap, admin);
-        };
-        
-        scenario.next_tx(admin);
-        {
-            let global_config = scenario.take_shared<config::GlobalConfig>();
-            let clock = clock::create_for_testing(scenario.ctx());
-            
-            // Create a new pool with current_sqrt_price = 1.0049 (corresponds to tick = 49)
-            let mut pool = pool::new<TestCoinB, TestCoinA>(
-                1, // tick_spacing
-                (79228162514264337593543950336 >> 32) + 490000000000000u128, // current_sqrt_price (1.0049)
-                1000, // fee_rate
-                std::string::utf8(b""), // url
-                0, // pool_index
-                @0x2, // feed_id_coin_a
-                @0x3, // feed_id_coin_b
-                true, // auto_calculation_volumes
-                &clock,
-                scenario.ctx()
-            );
-
-            // Create a new position with tick_lower = 0 and tick_upper = 50
-            let position = pool::open_position<TestCoinB, TestCoinA>(
-                &global_config,
-                &mut pool,
-                0,  // tick_lower
-                50,  // tick_upper
-                scenario.ctx()
-            );
-
-            // Test get_liquidity_from_amount with fixed amount of coin A
-            let (liquidity_a, amount_a, amount_b) = pool::get_liquidity_from_amount(
-                i32::from_u32(0),  // tick_lower
-                i32::from_u32(50), // tick_upper
-                pool::current_tick_index(&pool),
-                pool::current_sqrt_price(&pool),
-                100,  // amount
-                true  // a2b
-            );
-            assert!(liquidity_a > 0, 1);
-            assert!(amount_a == 100, 2);
-            assert!(amount_b > 0, 3);
-
-            // Test get_liquidity_from_amount with fixed amount of coin B
-            let (liquidity_b, amount_a, amount_b) = pool::get_liquidity_from_amount(
-                i32::from_u32(0),  // tick_lower
-                i32::from_u32(50), // tick_upper
-                pool::current_tick_index(&pool),
-                pool::current_sqrt_price(&pool),
-                100,  // amount
-                false // a2b
-            );
-            assert!(liquidity_b > 0, 4);
-            assert!(amount_a > 0, 5);
-            assert!(amount_b == 100, 6);
-            
-            // Return objects to scenario
-            transfer::public_transfer(pool, admin);
-            transfer::public_transfer(position, admin);
-            test_scenario::return_shared(global_config);
-            clock::destroy_for_testing(clock);
-        };
-        
-        test_scenario::end(scenario);
-    }
-
-    #[test]
-    fun test_get_liquidity_from_amount_below_range() {
-        let admin = @0x1;
-        let mut scenario = test_scenario::begin(admin);
-        
-        // Initialize factory and config
-        {
-            factory::test_init(scenario.ctx());
-            config::test_init(scenario.ctx());
-        };
-        
-        // Add fee tier
-        scenario.next_tx(admin);
-        {
-            let admin_cap = scenario.take_from_sender<config::AdminCap>();
-            let mut global_config = scenario.take_shared<config::GlobalConfig>();
-            config::add_fee_tier(&mut global_config, 1, 1000, scenario.ctx());
-            test_scenario::return_shared(global_config);
-            transfer::public_transfer(admin_cap, admin);
-        };
-        
-        scenario.next_tx(admin);
-        {
-            let global_config = scenario.take_shared<config::GlobalConfig>();
-            let clock = clock::create_for_testing(scenario.ctx());
-            
-            // Create a new pool with current_sqrt_price = 0.9951 (corresponds to tick = -49)
-            let mut pool = pool::new<TestCoinB, TestCoinA>(
-                1, // tick_spacing
-                (79228162514264337593543950336 >> 32) - 245000000000000u128, // current_sqrt_price (0.9951)
-                1000, // fee_rate
-                std::string::utf8(b""), // url
-                0, // pool_index
-                @0x2, // feed_id_coin_a
-                @0x3, // feed_id_coin_b
-                true, // auto_calculation_volumes
-                &clock,
-                scenario.ctx()
-            );
-
-            // Create a new position with tick_lower = -100 and tick_upper = 0
-            let position = pool::open_position<TestCoinB, TestCoinA>(
-                &global_config,
-                &mut pool,
-                4294967196,  // tick_lower (-100)
-                0,  // tick_upper
-                scenario.ctx()
-            );
-
-            // Test get_liquidity_from_amount with fixed amount of coin A
-            let (liquidity_a, amount_a, amount_b) = pool::get_liquidity_from_amount(
-                i32::from_u32(4294967196),  // tick_lower (-100)
-                i32::from_u32(0), // tick_upper
-                pool::current_tick_index(&pool),
-                pool::current_sqrt_price(&pool),
-                100,  // amount
-                true  // a2b
-            );
-            assert!(liquidity_a > 0, 1);
-            assert!(amount_a == 100, 2);
-            assert!(amount_b > 0, 3); // When price is below range and a2b = true, amount_b should be > 0
-
-            // Test get_liquidity_from_amount with fixed amount of coin B
-            let (liquidity_b, amount_a, amount_b) = pool::get_liquidity_from_amount(
-                i32::from_u32(4294967196),  // tick_lower (-100)
-                i32::from_u32(0), // tick_upper
-                pool::current_tick_index(&pool),
-                pool::current_sqrt_price(&pool),
-                100,  // amount
-                false // a2b
-            );
-            assert!(liquidity_b > 0, 4);
-            assert!(amount_a > 0, 5); // When price is below range and a2b = false, amount_a should be > 0
-            assert!(amount_b == 100, 6);
-            
-            // Return objects to scenario
-            transfer::public_transfer(pool, admin);
-            transfer::public_transfer(position, admin);
-            test_scenario::return_shared(global_config);
-            clock::destroy_for_testing(clock);
-        };
-        
-        test_scenario::end(scenario);
-    }
-
-    #[test]
-    #[expected_failure(abort_code = 19)]
-    fun test_get_liquidity_from_amount_on_boundary() {
-        let admin = @0x1;
-        let mut scenario = test_scenario::begin(admin);
-        
-        // Initialize factory and config
-        {
-            factory::test_init(scenario.ctx());
-            config::test_init(scenario.ctx());
-        };
-        
-        // Add fee tier
-        scenario.next_tx(admin);
-        {
-            let admin_cap = scenario.take_from_sender<config::AdminCap>();
-            let mut global_config = scenario.take_shared<config::GlobalConfig>();
-            config::add_fee_tier(&mut global_config, 1, 1000, scenario.ctx());
-            test_scenario::return_shared(global_config);
-            transfer::public_transfer(admin_cap, admin);
-        };
-        
-        scenario.next_tx(admin);
-        {
-            let global_config = scenario.take_shared<config::GlobalConfig>();
-            let clock = clock::create_for_testing(scenario.ctx());
-            
-            // Create a new pool with current_sqrt_price = 1.005 (corresponds to tick = 50)
-            let mut pool = pool::new<TestCoinB, TestCoinA>(
-                1, // tick_spacing
-                (79228162514264337593543950336 >> 32) + 500000000000000u128, // current_sqrt_price (1.005)
-                1000, // fee_rate
-                std::string::utf8(b""), // url
-                0, // pool_index
-                @0x2, // feed_id_coin_a
-                @0x3, // feed_id_coin_b
-                true, // auto_calculation_volumes
-                &clock,
-                scenario.ctx()
-            );
-
-            // Create a new position with tick_lower = 0 and tick_upper = 50
-            let position = pool::open_position<TestCoinB, TestCoinA>(
-                &global_config,
-                &mut pool,
-                0,  // tick_lower
-                50,  // tick_upper
-                scenario.ctx()
-            );
-
-            // Test get_liquidity_from_amount with fixed amount of coin A
-            // This should fail because current_tick is on the boundary
-            pool::get_liquidity_from_amount(
-                i32::from_u32(0),  // tick_lower
-                i32::from_u32(50), // tick_upper
-                i32::from_u32(60), // current_tick
-                pool::current_sqrt_price(&pool),
-                100,  // amount
-                true  // a2b
-            );
-            
-            // Return objects to scenario
-            transfer::public_transfer(pool, admin);
-            transfer::public_transfer(position, admin);
-            test_scenario::return_shared(global_config);
             clock::destroy_for_testing(clock);
         };
         
@@ -1660,21 +1334,21 @@ module clmm_pool::pool_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 6)]
+    #[expected_failure(abort_code = pool::EAmountInOverflow)]
     fun test_update_swap_result_amount_in_overflow() {
         let mut swap_result = clmm_pool::pool::create_swap_result_test(18446744073709551615, 0, 0, 0, 0, 0, 0);
         clmm_pool::pool::update_swap_result_test(&mut swap_result, 1, 0, 0, 0, 0, 0);
     }
 
     #[test]
-    #[expected_failure(abort_code = 7)]
+    #[expected_failure(abort_code = pool::EAmountOutOverflow)]
     fun test_update_swap_result_amount_out_overflow() {
         let mut swap_result = clmm_pool::pool::create_swap_result_test(0, 18446744073709551615, 0, 0, 0, 0, 0);
         clmm_pool::pool::update_swap_result_test(&mut swap_result, 0, 1, 0, 0, 0, 0);
     }
 
     #[test]
-    #[expected_failure(abort_code = 8)]
+    #[expected_failure(abort_code = pool::EFeeAmountOverflow)]
     fun test_update_swap_result_fee_amount_overflow() {
         let mut swap_result = clmm_pool::pool::create_swap_result_test(0, 0, 18446744073709551615, 0, 0, 0, 0);
         clmm_pool::pool::update_swap_result_test(&mut swap_result, 0, 0, 1, 0, 0, 0);
@@ -2178,7 +1852,7 @@ module clmm_pool::pool_tests {
             let liquidity = position_info.info_liquidity();
             assert!(liquidity == 1000000000000000, 1);
 
-            let positions_info = pool::fetch_positions(&pool, vector[sui::object::id<clmm_pool::position::Position>(&position), sui::object::id<clmm_pool::position::Position>(&position2)], 1000);
+            let positions_info = pool::fetch_positions(&pool, option::some(sui::object::id<clmm_pool::position::Position>(&position)), 1000);
             assert!(positions_info.length() == 2, 2);
             let position_info1 = positions_info[0];
             let liquidity1 = position_info1.info_liquidity();
@@ -2375,7 +2049,7 @@ module clmm_pool::pool_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 15)]
+    #[expected_failure(abort_code = pool::EPartnerIdMismatch)]
     fun test_repay_flash_swap_with_partner_wrong_partner_id() {
         let admin = @0x1;
         let mut scenario = test_scenario::begin(admin);
@@ -2591,7 +2265,7 @@ module clmm_pool::pool_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 13)]
+    #[expected_failure(abort_code = pool::EPoolPaused)] 
     fun test_repay_flash_swap_with_partner_paused_pool() {
         let admin = @0x1;
         let mut scenario = test_scenario::begin(admin);
@@ -2864,7 +2538,7 @@ module clmm_pool::pool_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 13)]
+    #[expected_failure(abort_code = pool::EPoolPaused)] 
     fun test_remove_liquidity_paused_pool() {
         let admin = @0x1;
         let mut scenario = test_scenario::begin(admin);
@@ -2952,7 +2626,7 @@ module clmm_pool::pool_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 3)]
+    #[expected_failure(abort_code = pool::EZeroLiquidity)]
     fun test_remove_liquidity_zero_amount() {
         let admin = @0x1;
         let mut scenario = test_scenario::begin(admin);
@@ -3384,7 +3058,7 @@ module clmm_pool::pool_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 0)]
+    #[expected_failure(abort_code = pool::EZeroAmount)]
     fun test_flash_swap_internal_zero_amount() {
         let admin = @0x1;
         let mut scenario = test_scenario::begin(admin);
@@ -3497,323 +3171,6 @@ module clmm_pool::pool_tests {
     }
 
     #[test]
-    fun test_get_amount_by_liquidity_below_range() {
-        let admin = @0x1;
-        let mut scenario = test_scenario::begin(admin);
-        
-        // Initialize factory and config
-        {
-            factory::test_init(scenario.ctx());
-            config::test_init(scenario.ctx());
-        };
-        
-        // Add fee tier
-        scenario.next_tx(admin);
-        {
-            let admin_cap = scenario.take_from_sender<config::AdminCap>();
-            let mut global_config = scenario.take_shared<config::GlobalConfig>();
-            config::add_fee_tier(&mut global_config, 1, 1000, scenario.ctx());
-            test_scenario::return_shared(global_config);
-            transfer::public_transfer(admin_cap, admin);
-        };
-        
-        scenario.next_tx(admin);
-        {
-            let global_config = scenario.take_shared<config::GlobalConfig>();
-            let clock = clock::create_for_testing(scenario.ctx());
-            
-            // Create a new pool with current_sqrt_price = 0.9951 (corresponds to tick = -49)
-            let pool = pool::new<TestCoinB, TestCoinA>(
-                1, // tick_spacing
-                (79228162514264337593543950336 >> 32) - 245000000000000u128, // current_sqrt_price (0.9951)
-                1000, // fee_rate
-                std::string::utf8(b""), // url
-                0, // pool_index
-                @0x2, // feed_id_coin_a
-                @0x3, // feed_id_coin_b
-                true, // auto_calculation_volumes
-                &clock,
-                scenario.ctx()
-            );
-
-            // Calculate expected values
-            let tick_lower = i32::from_u32(0);
-            let tick_upper = i32::from_u32(50);
-            let current_tick = i32::from_u32(4294967196); // -100
-            let liquidity = 1000000000000000000;
-            let round_up = false;
-
-            // Get sqrt prices for ticks
-            let sqrt_price_lower = clmm_pool::tick_math::get_sqrt_price_at_tick(tick_lower);
-            let sqrt_price_upper = clmm_pool::tick_math::get_sqrt_price_at_tick(tick_upper);
-            
-            // Calculate expected amount_a using get_delta_a formula
-            let expected_amount_a = clmm_pool::clmm_math::get_delta_a(
-                sqrt_price_lower,
-                sqrt_price_upper,
-                liquidity,
-                round_up
-            );
-
-            // Test get_amount_by_liquidity when current tick is below range
-            let (amount_a, amount_b) = pool::get_amount_by_liquidity(
-                tick_lower,
-                tick_upper,
-                current_tick,
-                pool::current_sqrt_price(&pool),
-                liquidity,
-                round_up
-            );
-
-            // Verify results
-            assert!(amount_a == expected_amount_a, 1);
-            assert!(amount_b == 0, 2);
-            
-            // Return objects to scenario
-            transfer::public_transfer(pool, admin);
-            test_scenario::return_shared(global_config);
-            clock::destroy_for_testing(clock);
-        };
-        
-        test_scenario::end(scenario);
-    }
-
-    #[test]
-    fun test_get_amount_by_liquidity_in_range() {
-        let admin = @0x1;
-        let mut scenario = test_scenario::begin(admin);
-        
-        // Initialize factory and config
-        {
-            factory::test_init(scenario.ctx());
-            config::test_init(scenario.ctx());
-        };
-        
-        // Add fee tier
-        scenario.next_tx(admin);
-        {
-            let admin_cap = scenario.take_from_sender<config::AdminCap>();
-            let mut global_config = scenario.take_shared<config::GlobalConfig>();
-            config::add_fee_tier(&mut global_config, 1, 1000, scenario.ctx());
-            test_scenario::return_shared(global_config);
-            transfer::public_transfer(admin_cap, admin);
-        };
-        
-        scenario.next_tx(admin);
-        {
-            let global_config = scenario.take_shared<config::GlobalConfig>();
-            let clock = clock::create_for_testing(scenario.ctx());
-            
-            // Create a new pool with current_sqrt_price = 1.0025 (corresponds to tick = 25)
-            let pool = pool::new<TestCoinB, TestCoinA>(
-                1, // tick_spacing
-                (79228162514264337593543950336 >> 32) + 250000000000000u128, // current_sqrt_price (1.0025)
-                1000, // fee_rate
-                std::string::utf8(b""), // url
-                0, // pool_index
-                @0x2, // feed_id_coin_a
-                @0x3, // feed_id_coin_b
-                true, // auto_calculation_volumes
-                &clock,
-                scenario.ctx()
-            );
-
-            // Calculate expected values
-            let tick_lower = i32::from_u32(0);
-            let tick_upper = i32::from_u32(50);
-            let current_tick = pool::current_tick_index(&pool); // 25
-            let current_sqrt_price = pool::current_sqrt_price(&pool);
-            let liquidity = 1000000000000000000;
-            let round_up = false;
-
-            // Get sqrt prices for ticks
-            let sqrt_price_lower = clmm_pool::tick_math::get_sqrt_price_at_tick(tick_lower);
-            let sqrt_price_upper = clmm_pool::tick_math::get_sqrt_price_at_tick(tick_upper);
-            
-            // Calculate expected amount_a using get_delta_a formula
-            let expected_amount_a = clmm_pool::clmm_math::get_delta_a(
-                current_sqrt_price,
-                sqrt_price_upper,
-                liquidity,
-                round_up
-            );
-
-            // Calculate expected amount_b using get_delta_b formula
-            let expected_amount_b = clmm_pool::clmm_math::get_delta_b(
-                sqrt_price_lower,
-                current_sqrt_price,
-                liquidity,
-                round_up
-            );
-
-            // Test get_amount_by_liquidity when current tick is in range
-            let (amount_a, amount_b) = pool::get_amount_by_liquidity(
-                tick_lower,
-                tick_upper,
-                current_tick,
-                current_sqrt_price,
-                liquidity,
-                round_up
-            );
-
-            // Verify results
-            assert!(amount_a == expected_amount_a, 1);
-            assert!(amount_b == expected_amount_b, 2);
-            
-            // Return objects to scenario
-            transfer::public_transfer(pool, admin);
-            test_scenario::return_shared(global_config);
-            clock::destroy_for_testing(clock);
-        };
-        
-        test_scenario::end(scenario);
-    }
-
-    #[test]
-    fun test_get_amount_by_liquidity_above_range() {
-        let admin = @0x1;
-        let mut scenario = test_scenario::begin(admin);
-        
-        // Initialize factory and config
-        {
-            factory::test_init(scenario.ctx());
-            config::test_init(scenario.ctx());
-        };
-        
-        // Add fee tier
-        scenario.next_tx(admin);
-        {
-            let admin_cap = scenario.take_from_sender<config::AdminCap>();
-            let mut global_config = scenario.take_shared<config::GlobalConfig>();
-            config::add_fee_tier(&mut global_config, 1, 1000, scenario.ctx());
-            test_scenario::return_shared(global_config);
-            transfer::public_transfer(admin_cap, admin);
-        };
-        
-        scenario.next_tx(admin);
-        {
-            let global_config = scenario.take_shared<config::GlobalConfig>();
-            let clock = clock::create_for_testing(scenario.ctx());
-            
-            // Create a new pool with current_sqrt_price = 1.0049 (corresponds to tick = 49)
-            let pool = pool::new<TestCoinB, TestCoinA>(
-                1, // tick_spacing
-                (79228162514264337593543950336 >> 32) + 490000000000000u128, // current_sqrt_price (1.0049)
-                1000, // fee_rate
-                std::string::utf8(b""), // url
-                0, // pool_index
-                @0x2, // feed_id_coin_a
-                @0x3, // feed_id_coin_b
-                true, // auto_calculation_volumes
-                &clock,
-                scenario.ctx()
-            );
-
-            // Calculate expected values
-            let tick_lower = i32::from_u32(0);
-            let tick_upper = i32::from_u32(50);
-            let current_tick = i32::from_u32(100); // 100
-            let current_sqrt_price = pool::current_sqrt_price(&pool);
-            let liquidity = 1000000000000000000;
-            let round_up = false;
-
-            // Get sqrt prices for ticks
-            let sqrt_price_lower = clmm_pool::tick_math::get_sqrt_price_at_tick(tick_lower);
-            let sqrt_price_upper = clmm_pool::tick_math::get_sqrt_price_at_tick(tick_upper);
-            
-            // Calculate expected amount_b using get_delta_b formula
-            let expected_amount_b = clmm_pool::clmm_math::get_delta_b(
-                sqrt_price_lower,
-                sqrt_price_upper,
-                liquidity,
-                round_up
-            );
-
-            // Test get_amount_by_liquidity when current tick is above range
-            let (amount_a, amount_b) = pool::get_amount_by_liquidity(
-                tick_lower,
-                tick_upper,
-                current_tick,
-                current_sqrt_price,
-                liquidity,
-                round_up
-            );
-
-            // Verify results
-            assert!(amount_a == 0, 1);
-            assert!(amount_b == expected_amount_b, 2);
-            
-            // Return objects to scenario
-            transfer::public_transfer(pool, admin);
-            test_scenario::return_shared(global_config);
-            clock::destroy_for_testing(clock);
-        };
-        
-        test_scenario::end(scenario);
-    }
-
-    #[test]
-    fun test_get_amount_by_liquidity_zero_liquidity() {
-        let admin = @0x1;
-        let mut scenario = test_scenario::begin(admin);
-        
-        // Initialize factory and config
-        {
-            factory::test_init(scenario.ctx());
-            config::test_init(scenario.ctx());
-        };
-        
-        // Add fee tier
-        scenario.next_tx(admin);
-        {
-            let admin_cap = scenario.take_from_sender<config::AdminCap>();
-            let mut global_config = scenario.take_shared<config::GlobalConfig>();
-            config::add_fee_tier(&mut global_config, 1, 1000, scenario.ctx());
-            test_scenario::return_shared(global_config);
-            transfer::public_transfer(admin_cap, admin);
-        };
-        
-        scenario.next_tx(admin);
-        {
-            let global_config = scenario.take_shared<config::GlobalConfig>();
-            let clock = clock::create_for_testing(scenario.ctx());
-            
-            // Create a new pool with current_sqrt_price = 1.0025 (corresponds to tick = 25)
-            let pool = pool::new<TestCoinB, TestCoinA>(
-                1, // tick_spacing
-                (79228162514264337593543950336 >> 32) + 250000000000000u128, // current_sqrt_price (1.0025)
-                1000, // fee_rate
-                std::string::utf8(b""), // url
-                0, // pool_index
-                @0x2, // feed_id_coin_a
-                @0x3, // feed_id_coin_b
-                true, // auto_calculation_volumes
-                &clock,
-                scenario.ctx()
-            );
-
-            // Test get_amount_by_liquidity with zero liquidity
-            let (amount_a, amount_b) = pool::get_amount_by_liquidity(
-                i32::from_u32(0),  // tick_lower
-                i32::from_u32(50), // tick_upper
-                pool::current_tick_index(&pool), // current_tick
-                pool::current_sqrt_price(&pool),
-                0, // liquidity
-                false // round_up
-            );
-            assert!(amount_a == 0, 1);
-            assert!(amount_b == 0, 2);
-            
-            // Return objects to scenario
-            transfer::public_transfer(pool, admin);
-            test_scenario::return_shared(global_config);
-            clock::destroy_for_testing(clock);
-        };
-        
-        test_scenario::end(scenario);
-    }
-
-    #[test]
     fun test_close_position_success() {
         let admin = @0x1;
         let mut scenario = test_scenario::begin(admin);
@@ -3882,7 +3239,7 @@ module clmm_pool::pool_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 7)]
+    #[expected_failure(abort_code = position::EPositionNotEmpty)]
     fun test_close_position_with_liquidity() {
         let admin = @0x1;
         let mut scenario = test_scenario::begin(admin);
@@ -3975,7 +3332,7 @@ module clmm_pool::pool_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 13)]
+    #[expected_failure(abort_code = pool::EPoolPaused)]
     fun test_close_position_paused_pool() {
         let admin = @0x1;
         let mut scenario = test_scenario::begin(admin);
@@ -4117,7 +3474,7 @@ module clmm_pool::pool_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 13)]
+    #[expected_failure(abort_code = pool::EPoolPaused)]
     fun test_update_emission_paused_pool() {
         let admin = @0x1;
         let mut scenario = test_scenario::begin(admin);
@@ -4194,7 +3551,7 @@ module clmm_pool::pool_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 8)]
+    #[expected_failure(abort_code = config::ERewarderManagerRole)]
     fun test_update_emission_not_rewarder_manager() {
         let admin = @0x1;
         let not_rewarder_manager = @0x2;
@@ -4409,7 +3766,7 @@ module clmm_pool::pool_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 13)]
+    #[expected_failure(abort_code = pool::EPoolPaused)]
     fun test_calculate_and_update_fee_paused_pool() {
         let admin = @0x1;
         let mut scenario = test_scenario::begin(admin);
@@ -4569,7 +3926,7 @@ module clmm_pool::pool_tests {
                 &mut vault,
                 &mut pool,
                 &mut position,
-                100000000,  // delta_liquidity
+                100000000-1000,  // delta_liquidity
                 &clock
             );
 
@@ -4585,6 +3942,38 @@ module clmm_pool::pool_tests {
                 balance_a,
                 balance_b,
                 receipt
+            );
+
+           let mut position2 = pool::open_position<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut pool,
+                100,  // tick_lower
+                200,  // tick_upper
+                scenario.ctx()
+            );
+
+            // Add liquidity to the position
+            let receipt2 = pool::add_liquidity<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut vault,
+                &mut pool,
+                &mut position2,
+                1000,  // delta_liquidity
+                &clock
+            );
+
+            let (pay_amount2_a, pay_amount2_b) = receipt2.add_liquidity_pay_amount();
+            let coin_a2 = sui::coin::mint_for_testing<TestCoinB>(pay_amount2_a, scenario.ctx());
+            let coin_b2 = sui::coin::mint_for_testing<TestCoinA>(pay_amount2_b, scenario.ctx());
+            let balance2_a = coin_a2.into_balance<TestCoinB>();
+            let balance2_b = coin_b2.into_balance<TestCoinA>();
+
+            pool::repay_add_liquidity<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut pool,
+                balance2_a,
+                balance2_b,
+                receipt2
             );
 
             let (balance_a, balance_b, swap_receipt) = pool::flash_swap_internal_test<TestCoinB, TestCoinA>(
@@ -4620,9 +4009,7 @@ module clmm_pool::pool_tests {
             pool::stake_in_fullsail_distribution<TestCoinB, TestCoinA>(
                 &mut pool,
                 &gauge_cap,
-                1000,  // liquidity
-                integer_mate::i32::from(100),  // tick_lower
-                integer_mate::i32::from(200),  // tick_upper
+                &position2,
                 &clock
             );
 
@@ -4631,7 +4018,8 @@ module clmm_pool::pool_tests {
                 &gauge_cap,
                 1000<<64,
                 1000,
-                100
+                100,
+                &clock
             );
 
             clock::increment_for_testing(&mut clock, 10000);
@@ -4656,15 +4044,15 @@ module clmm_pool::pool_tests {
             assert!(fullsail_distribution_growth == 18446744073709551616, 15);
 
             // Calculate and update fullsail distribution
-            let position_id = sui::object::id(&position);
+            let position2_id = sui::object::id(&position2);
             let fullsail_amount = pool::calculate_and_update_fullsail_distribution<TestCoinB, TestCoinA>(
                 &global_config,
                 &mut pool,
-                position_id
+                position2_id
             );
 
             // Verify fullsail amount is non-zero
-            assert!(fullsail_amount == 100000000, 1);
+            assert!(fullsail_amount == 1000, 1);
             
             // Return objects to scenario
             pool::destroy_flash_swap_receipt<TestCoinB, TestCoinA>(swap_receipt);
@@ -4675,6 +4063,7 @@ module clmm_pool::pool_tests {
             sui::coin::from_balance(balance_a2, scenario.ctx()).burn_for_testing();
             transfer::public_transfer(pool, admin);
             transfer::public_transfer(position, admin);
+            transfer::public_transfer(position2, admin);
             test_scenario::return_shared(stats);
             test_scenario::return_shared(price_provider);
             test_scenario::return_shared(vault);
@@ -4688,7 +4077,7 @@ module clmm_pool::pool_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 13)]
+    #[expected_failure(abort_code = pool::EPoolPaused)]
     fun test_calculate_and_update_fullsail_distribution_paused_pool() {
         let admin = @0x1;
         let mut scenario = test_scenario::begin(admin);
@@ -4839,8 +4228,8 @@ module clmm_pool::pool_tests {
             let mut position = pool::open_position<TestCoinB, TestCoinA>(
                 &global_config,
                 &mut pool,
-                0,  // tick_lower
-                100,  // tick_upper
+                100,  // tick_lower
+                200,  // tick_upper
                 scenario.ctx()
             );
 
@@ -4850,7 +4239,7 @@ module clmm_pool::pool_tests {
                 &mut vault,
                 &mut pool,
                 &mut position,
-                1000000000,  // delta_liquidity
+                1000,  // delta_liquidity
                 &clock
             );
 
@@ -4858,9 +4247,7 @@ module clmm_pool::pool_tests {
             pool::stake_in_fullsail_distribution<TestCoinB, TestCoinA>(
                 &mut pool,
                 &gauge_cap,
-                1000,  // liquidity
-                integer_mate::i32::from(100),  // tick_lower
-                integer_mate::i32::from(200),  // tick_upper
+                &position,
                 &clock
             );
 
@@ -4869,7 +4256,8 @@ module clmm_pool::pool_tests {
                 &gauge_cap,
                 1000<<64,
                 100000,
-                100
+                100,
+                &clock
             );
 
             clock::increment_for_testing(&mut clock, 1000000);
@@ -4902,7 +4290,7 @@ module clmm_pool::pool_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 13)]
+    #[expected_failure(abort_code = pool::EPoolPaused)] 
     fun test_update_fullsail_distribution_growth_global_paused_pool() {
         let admin = @0x1;
         let mut scenario = test_scenario::begin(admin);
@@ -5059,7 +4447,25 @@ module clmm_pool::pool_tests {
                 &mut vault,
                 &mut pool,
                 &mut position,
-                1000000000,  // delta_liquidity
+                500,  // delta_liquidity
+                &clock
+            );
+
+            let mut position2 = pool::open_position<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut pool,
+                100,  // tick_lower
+                200,  // tick_upper
+                scenario.ctx()
+            );
+
+            // Add liquidity to the position
+            let receipt2 = pool::add_liquidity<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut vault,
+                &mut pool,
+                &mut position2,
+                500,  // delta_liquidity
                 &clock
             );
 
@@ -5067,16 +4473,15 @@ module clmm_pool::pool_tests {
             pool::stake_in_fullsail_distribution<TestCoinB, TestCoinA>(
                 &mut pool,
                 &gauge_cap,
-                1000,  // liquidity
-                i32::from(100),  // tick_lower
-                i32::from(200),  // tick_upper
+                &position,
                 &clock
             );
 
-            pool::mark_position_staked<TestCoinB, TestCoinA>(
+            pool::stake_in_fullsail_distribution<TestCoinB, TestCoinA>(
                 &mut pool,
                 &gauge_cap,
-                sui::object::id(&position)
+                &position2,
+                &clock
             );
 
             // Verify initial staked liquidity
@@ -5087,9 +4492,7 @@ module clmm_pool::pool_tests {
             pool::unstake_from_fullsail_distribution<TestCoinB, TestCoinA>(
                 &mut pool,
                 &gauge_cap,
-                500,  // liquidity to unstake
-                i32::from(100),  // tick_lower
-                i32::from(200),  // tick_upper
+                &position2,
                 &clock
             );
 
@@ -5098,25 +4501,27 @@ module clmm_pool::pool_tests {
             assert!(final_staked_liquidity == 500, 2);
 
             let tick = pool::borrow_tick<TestCoinB, TestCoinA>(&pool, i32::from(100));
-            assert!(tick.liquidity_gross() == 1000000000, 3);
+            assert!(tick.liquidity_gross() == 1000, 3);
             assert!(tick.fullsail_distribution_staked_liquidity_net().eq(integer_mate::i128::from(500)), 4);
 
             let ticks = pool::fetch_ticks<TestCoinB, TestCoinA>(
                 &pool,
-                vector[99, 200],
+                option::some(99),
                 2
             );
             assert!(ticks.length() == 2, 5);
-            assert!(ticks[0].liquidity_gross() == 1000000000, 6);
-            assert!(ticks[1].liquidity_gross() == 1000000000, 7);
+            assert!(ticks[0].liquidity_gross() == 1000, 6);
+            assert!(ticks[1].liquidity_gross() == 1000, 7);
             assert!(ticks[0].index().eq(integer_mate::i32::from(100)), 8);
             assert!(ticks[1].index().eq(integer_mate::i32::from(200)), 9);
             
 
             // Return objects to scenario
             pool::destroy_receipt<TestCoinB, TestCoinA>(receipt);
+            pool::destroy_receipt<TestCoinB, TestCoinA>(receipt2);
             transfer::public_transfer(pool, admin);
             transfer::public_transfer(position, admin);
+            transfer::public_transfer(position2, admin);
             transfer::public_transfer(gauge_cap, admin);
             transfer::public_transfer(create_gauge_cap, admin);
             test_scenario::return_shared(global_config);
@@ -5130,7 +4535,7 @@ module clmm_pool::pool_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 13)]
+    #[expected_failure(abort_code = pool::EPoolPaused)] 
     fun test_unstake_from_fullsail_distribution_paused_pool() {
         let admin = @0x1;
         let mut scenario = test_scenario::begin(admin);
@@ -5211,9 +4616,7 @@ module clmm_pool::pool_tests {
             pool::stake_in_fullsail_distribution<TestCoinB, TestCoinA>(
                 &mut pool,
                 &gauge_cap,
-                1000,  // liquidity
-                i32::from(100),  // tick_lower
-                i32::from(200),  // tick_upper
+                &position,
                 &clock
             );
 
@@ -5224,9 +4627,7 @@ module clmm_pool::pool_tests {
             pool::unstake_from_fullsail_distribution<TestCoinB, TestCoinA>(
                 &mut pool,
                 &gauge_cap,
-                500,  // liquidity to unstake
-                i32::from(100),  // tick_lower
-                i32::from(200),  // tick_upper
+                &position,
                 &clock
             );
 
@@ -5311,7 +4712,7 @@ module clmm_pool::pool_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 13)]
+    #[expected_failure(abort_code = pool::EPoolPaused)] 
     fun test_update_fee_rate_paused_pool() {
         let admin = @0x1;
         let mut scenario = test_scenario::begin(admin);
@@ -5376,7 +4777,7 @@ module clmm_pool::pool_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 9)]
+    #[expected_failure(abort_code = pool::EInvalidFeeRate)]
     fun test_update_fee_rate_exceeds_max() {
         let admin = @0x1;
         let mut scenario = test_scenario::begin(admin);
@@ -5434,7 +4835,7 @@ module clmm_pool::pool_tests {
     }
 
     #[test]
-    /// Test update_position_url function
+    /// Test update_pool_url function
     /// Verifies that:
     /// 1. URL can be updated successfully for an active pool
     fun test_update_position_url_success() {
@@ -5478,7 +4879,7 @@ module clmm_pool::pool_tests {
 
             // Update URL
             let new_url = std::string::utf8(b"https://new-url.com");
-            pool::update_position_url<TestCoinB, TestCoinA>(
+            pool::update_pool_url<TestCoinB, TestCoinA>(
                 &global_config,
                 &mut pool,
                 new_url,
@@ -5498,10 +4899,10 @@ module clmm_pool::pool_tests {
     }
 
     #[test]
-    /// Test update_position_url function with paused pool
+    /// Test update_pool_url function with paused pool
     /// Verifies that:
     /// 1. URL cannot be updated for a paused pool
-    #[expected_failure(abort_code = 13)]
+    #[expected_failure(abort_code = pool::EPoolPaused)] 
     fun test_update_position_url_paused_pool() {
         let admin = @0x1;
         let mut scenario = test_scenario::begin(admin);
@@ -5546,7 +4947,7 @@ module clmm_pool::pool_tests {
 
             // Try to update URL - should fail with abort code 13
             let new_url = std::string::utf8(b"https://new-url.com");
-            pool::update_position_url<TestCoinB, TestCoinA>(
+            pool::update_pool_url<TestCoinB, TestCoinA>(
                 &global_config,
                 &mut pool,
                 new_url,
@@ -5613,7 +5014,7 @@ module clmm_pool::pool_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 13)]
+    #[expected_failure(abort_code = pool::EPoolPaused)] 
     fun test_update_unstaked_liquidity_fee_rate_paused_pool() {
         let admin = @0x1;
         let mut scenario = test_scenario::begin(admin);
@@ -5666,7 +5067,7 @@ module clmm_pool::pool_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 9)]
+    #[expected_failure(abort_code = pool::EInvalidFeeRate)]
     fun test_update_unstaked_liquidity_fee_rate_exceeds_max() {
         let admin = @0x1;
         let mut scenario = test_scenario::begin(admin);
@@ -5717,7 +5118,7 @@ module clmm_pool::pool_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 9)]
+    #[expected_failure(abort_code = pool::EInvalidFeeRate)]
     fun test_update_unstaked_liquidity_fee_rate_below_min() {
         let admin = @0x1;
         let mut scenario = test_scenario::begin(admin);
@@ -5767,7 +5168,7 @@ module clmm_pool::pool_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 9)]
+    #[expected_failure(abort_code = pool::EInvalidFeeRate)]
     fun test_update_unstaked_liquidity_fee_rate_same_value() {
         let admin = @0x1;
         let mut scenario = test_scenario::begin(admin);
@@ -6014,7 +5415,7 @@ module clmm_pool::pool_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 13)]
+    #[expected_failure(abort_code = pool::EPoolPaused)] 
     fun test_calculate_and_update_points_pool_paused() {
         let admin = @0x123;
         let mut scenario = sui::test_scenario::begin(admin);
@@ -6859,9 +6260,7 @@ module clmm_pool::pool_tests {
             pool::stake_in_fullsail_distribution<TestCoinB, TestCoinA>(
                 &mut pool,
                 &gauge_cap,
-                1000000, // liquidity
-                integer_mate::i32::from(0), // tick_lower
-                integer_mate::i32::from(100), // tick_upper
+                &position,
                 &clock
             );
 
@@ -6993,9 +6392,7 @@ module clmm_pool::pool_tests {
             pool::stake_in_fullsail_distribution<TestCoinB, TestCoinA>(
                 &mut pool,
                 &gauge_cap,
-                90<<64,  // liquidity
-                integer_mate::i32::from(100),  // tick_lower
-                integer_mate::i32::from(200),  // tick_upper
+                &position,
                 &clock
             );
 
@@ -7074,6 +6471,270 @@ module clmm_pool::pool_tests {
             test_scenario::return_shared(price_provider);
             test_scenario::return_shared(vault);
             test_scenario::return_shared(global_config);
+            clock::destroy_for_testing(clock);
+        };
+        
+        test_scenario::end(scenario);
+    }
+
+    #[test]
+    #[expected_failure(abort_code = clmm_pool::clmm_math::ECalculationOverflow)]
+    fun test_overflow_add_liquidity_a() {
+        let admin = @0x1;
+        let mut scenario = test_scenario::begin(admin);
+        
+        // Initialize factory and config
+        {
+            factory::test_init(scenario.ctx());
+            config::test_init(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
+            stats::init_test(scenario.ctx());
+            price_provider::init_test(scenario.ctx());
+            partner::test_init(scenario.ctx());
+        };
+        
+        // Add fee tier
+        scenario.next_tx(admin);
+        {
+            let admin_cap = scenario.take_from_sender<config::AdminCap>();
+            let mut global_config = scenario.take_shared<config::GlobalConfig>();
+            config::add_fee_tier(&mut global_config, 1, 1000, scenario.ctx());
+            config::add_fee_tier(&mut global_config, 2, 1000, scenario.ctx());
+            test_scenario::return_shared(global_config);
+            transfer::public_transfer(admin_cap, admin);
+        };
+
+        scenario.next_tx(admin);
+        {
+            let global_config = scenario.take_shared<config::GlobalConfig>();
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
+            let price_provider = scenario.take_shared<price_provider::PriceProvider>();
+            let clock = clock::create_for_testing(scenario.ctx());
+            
+            // Create a pool with different initial price
+            let mut pool = pool::new<TestCoinB, TestCoinA>(
+                2, // tick_spacing
+                18584142135623730951, // current_tick = 148
+                1000, // fee_rate
+                std::string::utf8(b""), // url
+                0, // pool_index
+                @0x2, // feed_id_coin_a
+                @0x3, // feed_id_coin_b
+                false, // auto_calculation_volumes
+                &clock,
+                scenario.ctx()
+            );
+
+            // Create a position with narrower range but more liquidity
+            let mut position = pool::open_position<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut pool,
+                0,  // tick_lower = -153496
+                200,
+                scenario.ctx()
+            );
+
+            // Add liquidity to the position
+            let addLiquidityReceipt = pool::add_liquidity<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut vault,
+                &mut pool,
+                &mut position,
+                2<<64,
+                &clock
+            );
+
+            let (pay_amount_a, pay_amount_b) = addLiquidityReceipt.add_liquidity_pay_amount();
+            let coin_a = sui::coin::mint_for_testing<TestCoinB>(pay_amount_a, scenario.ctx());
+            let coin_b = sui::coin::mint_for_testing<TestCoinA>(pay_amount_b, scenario.ctx());
+            let balance_a = coin_a.into_balance<TestCoinB>();
+            let balance_b = coin_b.into_balance<TestCoinA>();
+
+            pool::repay_add_liquidity<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut pool,
+                balance_a,
+                balance_b,
+                addLiquidityReceipt
+            );
+
+            transfer::public_transfer(pool, admin);
+            transfer::public_transfer(position, admin);
+            test_scenario::return_shared(global_config);
+            test_scenario::return_shared(price_provider);
+            test_scenario::return_shared(vault);
+            clock::destroy_for_testing(clock);
+        };
+
+        scenario.next_tx(admin);
+        {
+            let global_config = scenario.take_shared<config::GlobalConfig>();
+            let mut stats = scenario.take_shared<stats::Stats>();
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
+            let price_provider = scenario.take_shared<price_provider::PriceProvider>();
+            let clock = clock::create_for_testing(scenario.ctx());
+            let mut pool = scenario.take_from_sender<pool::Pool<TestCoinB, TestCoinA>>();
+
+            let mut position2 = pool::open_position<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut pool,
+                300000,  // tick_lower
+                300200,  // tick_upper
+                scenario.ctx()
+            );
+
+            let add_liquidity_amount = 10365647984364446732462244378333008;
+            // overflow
+            let addLiquidityReceipt2 = pool::add_liquidity<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut vault,
+                &mut pool,
+                &mut position2,
+                add_liquidity_amount,
+                &clock
+            );
+
+            pool::destroy_receipt(addLiquidityReceipt2);
+        
+            // Clean up 
+            transfer::public_transfer(pool, admin);
+            transfer::public_transfer(position2, admin);
+            test_scenario::return_shared(global_config);
+            test_scenario::return_shared(stats);
+            test_scenario::return_shared(price_provider);
+            test_scenario::return_shared(vault);
+            clock::destroy_for_testing(clock);
+        };
+        
+        test_scenario::end(scenario);
+    }
+
+    #[test]
+    #[expected_failure(abort_code = clmm_pool::clmm_math::ECalculationOverflow)]
+    fun test_overflow_add_liquidity_b() {
+        let admin = @0x1;
+        let mut scenario = test_scenario::begin(admin);
+        
+        // Initialize factory and config
+        {
+            factory::test_init(scenario.ctx());
+            config::test_init(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
+            stats::init_test(scenario.ctx());
+            price_provider::init_test(scenario.ctx());
+            partner::test_init(scenario.ctx());
+        };
+        
+        // Add fee tier
+        scenario.next_tx(admin);
+        {
+            let admin_cap = scenario.take_from_sender<config::AdminCap>();
+            let mut global_config = scenario.take_shared<config::GlobalConfig>();
+            config::add_fee_tier(&mut global_config, 1, 1000, scenario.ctx());
+            config::add_fee_tier(&mut global_config, 2, 1000, scenario.ctx());
+            test_scenario::return_shared(global_config);
+            transfer::public_transfer(admin_cap, admin);
+        };
+
+        scenario.next_tx(admin);
+        {
+            let global_config = scenario.take_shared<config::GlobalConfig>();
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
+            let price_provider = scenario.take_shared<price_provider::PriceProvider>();
+            let clock = clock::create_for_testing(scenario.ctx());
+            
+            // Create a pool with different initial price
+            let mut pool = pool::new<TestCoinB, TestCoinA>(
+                2, // tick_spacing
+                18584142135623730951, // current_tick = 148
+                1000, // fee_rate
+                std::string::utf8(b""), // url
+                0, // pool_index
+                @0x2, // feed_id_coin_a
+                @0x3, // feed_id_coin_b
+                false, // auto_calculation_volumes
+                &clock,
+                scenario.ctx()
+            );
+
+            // Create a position with narrower range but more liquidity
+            let mut position = pool::open_position<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut pool,
+                0,  // tick_lower = -153496
+                200,
+                scenario.ctx()
+            );
+
+            // Add liquidity to the position
+            let addLiquidityReceipt = pool::add_liquidity<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut vault,
+                &mut pool,
+                &mut position,
+                2<<64,
+                &clock
+            );
+
+            let (pay_amount_a, pay_amount_b) = addLiquidityReceipt.add_liquidity_pay_amount();
+            let coin_a = sui::coin::mint_for_testing<TestCoinB>(pay_amount_a, scenario.ctx());
+            let coin_b = sui::coin::mint_for_testing<TestCoinA>(pay_amount_b, scenario.ctx());
+            let balance_a = coin_a.into_balance<TestCoinB>();
+            let balance_b = coin_b.into_balance<TestCoinA>();
+
+            pool::repay_add_liquidity<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut pool,
+                balance_a,
+                balance_b,
+                addLiquidityReceipt
+            );
+
+            transfer::public_transfer(pool, admin);
+            transfer::public_transfer(position, admin);
+            test_scenario::return_shared(global_config);
+            test_scenario::return_shared(price_provider);
+            test_scenario::return_shared(vault);
+            clock::destroy_for_testing(clock);
+        };
+
+        scenario.next_tx(admin);
+        {
+            let global_config = scenario.take_shared<config::GlobalConfig>();
+            let stats = scenario.take_shared<stats::Stats>();
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
+            let price_provider = scenario.take_shared<price_provider::PriceProvider>();
+            let clock = clock::create_for_testing(scenario.ctx());
+            let mut pool = scenario.take_from_sender<pool::Pool<TestCoinB, TestCoinA>>();
+
+            let mut position2 = pool::open_position<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut pool,
+                4294830290,  // tick_upper
+                4294836290,  // tick_lower
+                scenario.ctx()
+            );
+
+            let add_liquidity_amount = 561922903193396<<64;
+            // overflow
+            let addLiquidityReceipt2 = pool::add_liquidity<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut vault,
+                &mut pool,
+                &mut position2,
+                add_liquidity_amount,
+                &clock
+            );
+
+            pool::destroy_receipt(addLiquidityReceipt2);
+        
+            // Clean up 
+            transfer::public_transfer(pool, admin);
+            transfer::public_transfer(position2, admin);
+            test_scenario::return_shared(global_config);
+            test_scenario::return_shared(stats);
+            test_scenario::return_shared(price_provider);
+            test_scenario::return_shared(vault);
             clock::destroy_for_testing(clock);
         };
         

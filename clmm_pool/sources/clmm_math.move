@@ -13,13 +13,13 @@
 /// * Tick spacing and range calculations
 module clmm_pool::clmm_math {
     /// Error codes for the CLMM math module
-    const EPriceExceedsMax: u64 = 0;
-    const EPriceBelowMin: u64 = 1;
-    const ECalculationOverflow: u64 = 2;
-    const EInvalidTargetPrice: u64 = 4;
-    const ECurrentTickOutsideRange: u64 = 3018;
-    const EZeroAmount: u64 = 3019;
-    const EZeroSqrtPriceDiff: u64 = 3020;
+    const EPriceExceedsMax: u64 = 96347352375645;
+    const EPriceBelowMin: u64 = 97456203672334;
+    const ECalculationOverflow: u64 = 987654321987654321;
+    const EInvalidTargetPrice: u64 = 934623412160325623;
+    const ECurrentTickOutsideRange: u64 = 923652357234723423;
+    const EZeroAmount: u64 = 923623405234236341;
+    const EZeroSqrtPriceDiff: u64 = 946024032672340263;
 
     /// Maximum value for a 64-bit unsigned integer (2^64 - 1)
     const MAX_U64: u128 = 18446744073709551615;
@@ -140,29 +140,43 @@ module clmm_pool::clmm_math {
             return (0, 0)
         };
         if (integer_mate::i32::lt(current_tick, tick_lower)) {
-            (get_delta_a(
-                clmm_pool::tick_math::get_sqrt_price_at_tick(tick_lower),
-                clmm_pool::tick_math::get_sqrt_price_at_tick(tick_upper),
-                liquidity,
-                round_up
-            ), 0)
-        } else {
-            let (amount_a, amount_b) = if (integer_mate::i32::lt(current_tick, tick_upper)) {
-                (get_delta_a(current_sqrt_price, clmm_pool::tick_math::get_sqrt_price_at_tick(tick_upper), liquidity, round_up), 
-                 get_delta_b(
-                    clmm_pool::tick_math::get_sqrt_price_at_tick(tick_lower),
-                    current_sqrt_price,
-                    liquidity,
-                    round_up
-                ))
-            } else {
-                (0, get_delta_b(
+            (
+                get_delta_a(
                     clmm_pool::tick_math::get_sqrt_price_at_tick(tick_lower),
                     clmm_pool::tick_math::get_sqrt_price_at_tick(tick_upper),
                     liquidity,
                     round_up
-                ))
+                ), 
+                0
+            )
+        } else {
+            let (amount_a, amount_b) = if (integer_mate::i32::lt(current_tick, tick_upper)) {
+                (
+                    get_delta_a(
+                        current_sqrt_price, 
+                        clmm_pool::tick_math::get_sqrt_price_at_tick(tick_upper), 
+                        liquidity, 
+                        round_up
+                    ), 
+                    get_delta_b(
+                        clmm_pool::tick_math::get_sqrt_price_at_tick(tick_lower),
+                        current_sqrt_price,
+                        liquidity,
+                        round_up
+                    )
+                )
+            } else {
+                (
+                    0, 
+                    get_delta_b(
+                        clmm_pool::tick_math::get_sqrt_price_at_tick(tick_lower),
+                        clmm_pool::tick_math::get_sqrt_price_at_tick(tick_upper),
+                        liquidity,
+                        round_up
+                    )
+                )
             };
+
             (amount_a, amount_b)
         }
     }
@@ -220,6 +234,9 @@ module clmm_pool::clmm_math {
         let product = integer_mate::full_math_u128::full_mul(liquidity, sqrt_price_diff);
         if (round_up && (product & (MAX_U64 as u256) > 0)) {
             return ((product >> 64) + 1) as u64
+        };
+        if (product > ((MAX_U64 as u256) << 64)) {
+            abort ECalculationOverflow
         };
         (product >> 64) as u64
     }
@@ -336,23 +353,54 @@ module clmm_pool::clmm_math {
                 ), 0)
             } else {
                 assert!(integer_mate::i32::lt(current_tick, tick_upper), ECurrentTickOutsideRange);
-                let liquidity = get_liquidity_from_a(current_sqrt_price, clmm_pool::tick_math::get_sqrt_price_at_tick(tick_upper), amount_in, false);
-                (liquidity, get_delta_b(current_sqrt_price, clmm_pool::tick_math::get_sqrt_price_at_tick(tick_lower), liquidity, true))
+                let liquidity = get_liquidity_from_a(
+                    current_sqrt_price, 
+                    clmm_pool::tick_math::get_sqrt_price_at_tick(tick_upper), 
+                    amount_in, 
+                    false
+                );
+                (
+                    liquidity, 
+                    get_delta_b(
+                        current_sqrt_price, 
+                        clmm_pool::tick_math::get_sqrt_price_at_tick(tick_lower), 
+                        liquidity, 
+                        true
+                    )
+                )
             };
+
             (liquidity, amount_in, amount_b)
         } else {
             let (liquidity, amount_a) = if (integer_mate::i32::gte(current_tick, tick_upper)) {
-                (get_liquidity_from_b(
-                    clmm_pool::tick_math::get_sqrt_price_at_tick(tick_lower),
-                    clmm_pool::tick_math::get_sqrt_price_at_tick(tick_upper),
-                    amount_in,
-                    false
-                ), 0)
+                (
+                    get_liquidity_from_b(
+                        clmm_pool::tick_math::get_sqrt_price_at_tick(tick_lower),
+                        clmm_pool::tick_math::get_sqrt_price_at_tick(tick_upper),
+                        amount_in,
+                        false
+                    ), 
+                    0
+                )
             } else {
                 assert!(integer_mate::i32::gte(current_tick, tick_lower), ECurrentTickOutsideRange);
-                let liquidity = get_liquidity_from_b(clmm_pool::tick_math::get_sqrt_price_at_tick(tick_lower), current_sqrt_price, amount_in, false);
-                (liquidity, get_delta_a(current_sqrt_price, clmm_pool::tick_math::get_sqrt_price_at_tick(tick_upper), liquidity, true))
+                let liquidity = get_liquidity_from_b(
+                    clmm_pool::tick_math::get_sqrt_price_at_tick(tick_lower), 
+                    current_sqrt_price, 
+                    amount_in, 
+                    false
+                );
+                (
+                    liquidity, 
+                    get_delta_a(
+                        current_sqrt_price, 
+                        clmm_pool::tick_math::get_sqrt_price_at_tick(tick_upper), 
+                        liquidity, 
+                        true
+                    )
+                )
             };
+            
             (liquidity, amount_a, amount_in)
         }
     }

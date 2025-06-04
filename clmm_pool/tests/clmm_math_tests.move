@@ -105,7 +105,7 @@ module clmm_pool::clmm_math_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 4)]
+    #[expected_failure(abort_code = clmm_math::EInvalidTargetPrice)]
     fun test_compute_swap_step_invalid_price_a2b() {
         clmm_math::compute_swap_step(
             100000 << 64, // current_sqrt_price
@@ -119,7 +119,7 @@ module clmm_pool::clmm_math_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 4)]
+    #[expected_failure(abort_code = clmm_math::EInvalidTargetPrice)]
     fun test_compute_swap_step_invalid_price_b2a() {
         clmm_math::compute_swap_step(
             100000 << 64, // current_sqrt_price

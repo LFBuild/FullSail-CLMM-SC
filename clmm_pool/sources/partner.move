@@ -24,13 +24,13 @@
 /// * Partner access control events
 module clmm_pool::partner {
     /// Error codes for the partner module
-    const EPartnersNotEmpty: u64 = 1;
-    const EInvalidFeeRate: u64 = 2;
-    const EPartnerIdMismatch: u64 = 3;
-    const ENoBalance: u64 = 4;
-    const EInvalidName: u64 = 5;
-    const EInvalidTimeRange: u64 = 6;
-    const EInvalidStartTime: u64 = 7;
+    const EPartnersNotEmpty: u64 = 934069239060369234;
+    const EInvalidFeeRate: u64 = 930926203952059348;
+    const EPartnerIdMismatch: u64 = 938695837296234096;
+    const ENoBalance: u64 = 932486326023046346;
+    const EInvalidName: u64 = 923846720603245329;
+    const EInvalidTimeRange: u64 = 934628203496823095;
+    const EInvalidStartTime: u64 = 936032463406320639;
 
     /// Represents the collection of registered partners in the system.
     /// This structure maintains a mapping of partner names to their unique identifiers.
@@ -136,7 +136,7 @@ module clmm_pool::partner {
     public struct ReceiveRefFeeEvent has copy, drop {
         partner_id: sui::object::ID,
         amount: u64,
-        type_name: std::string::String,
+        type_name: std::type_name::TypeName,
     }
 
     /// Event emitted when a partner claims their referral fees.
@@ -148,7 +148,7 @@ module clmm_pool::partner {
     public struct ClaimRefFeeEvent has copy, drop {
         partner_id: sui::object::ID,
         amount: u64,
-        type_name: std::string::String,
+        type_name: std::type_name::TypeName,
     }
     
     /// Returns a reference to the partner's token balances.
@@ -187,14 +187,18 @@ module clmm_pool::partner {
     ) {
         clmm_pool::config::checked_package_version(global_config);
         assert!(partner_cap.partner_id == sui::object::id<Partner>(partner), EPartnerIdMismatch);
-        let type_name = std::string::from_ascii(std::type_name::into_string(std::type_name::get<CoinType>()));
-        assert!(sui::bag::contains<std::string::String>(&partner.balances, type_name), ENoBalance);
-        let balance = sui::bag::remove<std::string::String, sui::balance::Balance<CoinType>>(&mut partner.balances, type_name);
+
+        let type_name = std::type_name::get<CoinType>();
+        assert!(sui::bag::contains<std::type_name::TypeName>(&partner.balances, type_name), ENoBalance);
+
+        let balance = sui::bag::remove<std::type_name::TypeName, sui::balance::Balance<CoinType>>(&mut partner.balances, type_name);
+
         let amount = sui::balance::value<CoinType>(&balance);
         sui::transfer::public_transfer<sui::coin::Coin<CoinType>>(
             sui::coin::from_balance<CoinType>(balance, ctx),
             sui::tx_context::sender(ctx)
         );
+
         let event = ClaimRefFeeEvent {
             partner_id: sui::object::id<Partner>(partner),
             amount,
@@ -210,7 +214,7 @@ module clmm_pool::partner {
     /// * `global_config` - Reference to the global configuration
     /// * `partners` - Mutable reference to the partners collection
     /// * `name` - Name of the new partner
-    /// * `ref_fee_rate` - Referral fee rate in basis points (1/10000)
+    /// * `ref_fee_rate` - Referral fee rate in basis points
     /// * `start_time` - Start time of partner's active period
     /// * `end_time` - End time of partner's active period
     /// * `recipient` - Address to receive the partner capability object
@@ -222,7 +226,7 @@ module clmm_pool::partner {
     /// * If the caller doesn't have the partner manager role
     /// * If end_time is less than or equal to start_time (error code: EInvalidTimeRange)
     /// * If start_time is less than current time (error code: EInvalidStartTime)
-    /// * If ref_fee_rate is greater than or equal to 10000 (error code: EInvalidFeeRate)
+    /// * If ref_fee_rate is greater than or equal to max_ref_fee_rate (error code: EInvalidFeeRate)
     /// * If name is empty (error code: EInvalidName)
     /// * If a partner with the same name already exists (error code: EInvalidName)
     /// 
@@ -247,7 +251,7 @@ module clmm_pool::partner {
     ) {
         assert!(end_time > start_time, EInvalidTimeRange);
         assert!(start_time >= sui::clock::timestamp_ms(clock) / 1000, EInvalidStartTime);
-        assert!(ref_fee_rate < 10000, EInvalidFeeRate);
+        assert!(ref_fee_rate < max_ref_fee_rate(), EInvalidFeeRate);
         assert!(!std::string::is_empty(&name), EInvalidName);
         assert!(!sui::vec_map::contains<std::string::String, sui::object::ID>(&partners.partners, &name), EInvalidName);
         clmm_pool::config::checked_package_version(global_config);
@@ -357,16 +361,16 @@ module clmm_pool::partner {
     /// # Details
     /// * If the token type already exists in the partner's balances, adds to existing balance
     /// * If the token type is new, creates a new balance entry
-    public fun receive_ref_fee<CoinType>(partner: &mut Partner, balance: sui::balance::Balance<CoinType>) {
-        let type_name = std::string::from_ascii(std::type_name::into_string(std::type_name::get<CoinType>()));
+    public(package) fun receive_ref_fee<CoinType>(partner: &mut Partner, balance: sui::balance::Balance<CoinType>) {
+        let type_name = std::type_name::get<CoinType>();
         let amount = sui::balance::value<CoinType>(&balance);
-        if (sui::bag::contains<std::string::String>(&partner.balances, type_name)) {
+        if (sui::bag::contains<std::type_name::TypeName>(&partner.balances, type_name)) {
             sui::balance::join<CoinType>(
-                sui::bag::borrow_mut<std::string::String, sui::balance::Balance<CoinType>>(&mut partner.balances, type_name),
+                sui::bag::borrow_mut<std::type_name::TypeName, sui::balance::Balance<CoinType>>(&mut partner.balances, type_name),
                 balance
             );
         } else {
-            sui::bag::add<std::string::String, sui::balance::Balance<CoinType>>(&mut partner.balances, type_name, balance);
+            sui::bag::add<std::type_name::TypeName, sui::balance::Balance<CoinType>>(&mut partner.balances, type_name, balance);
         };
         let event = ReceiveRefFeeEvent {
             partner_id: sui::object::id<Partner>(partner),
@@ -410,7 +414,7 @@ module clmm_pool::partner {
     /// # Abort Conditions
     /// * If the package version check fails
     /// * If the caller doesn't have the partner manager role
-    /// * If new_fee_rate is greater than or equal to 10000 (error code: EInvalidFeeRate)
+    /// * If new_fee_rate is greater than or equal to max_ref_fee_rate (error code: EInvalidFeeRate)
     /// 
     /// # Events
     /// * Emits UpdateRefFeeRateEvent with the old and new fee rates
@@ -418,9 +422,9 @@ module clmm_pool::partner {
         global_config: &clmm_pool::config::GlobalConfig,
         partner: &mut Partner,
         new_fee_rate: u64,
-        ctx: &mut sui::tx_context::TxContext
+        ctx: &sui::tx_context::TxContext
     ) {
-        assert!(new_fee_rate < 10000, EInvalidFeeRate);
+        assert!(new_fee_rate < max_ref_fee_rate(), EInvalidFeeRate);
         clmm_pool::config::checked_package_version(global_config);
         clmm_pool::config::check_partner_manager_role(global_config, sui::tx_context::sender(ctx));
         partner.ref_fee_rate = new_fee_rate;
@@ -457,7 +461,7 @@ module clmm_pool::partner {
         start_time: u64,
         end_time: u64,
         clock: &sui::clock::Clock,
-        ctx: &mut sui::tx_context::TxContext
+        ctx: &sui::tx_context::TxContext
     ) {
         assert!(end_time > start_time, EInvalidTimeRange);
         assert!(end_time > sui::clock::timestamp_ms(clock) / 1000, EInvalidTimeRange);
@@ -482,6 +486,14 @@ module clmm_pool::partner {
     /// True if the collection is empty, false otherwise
     public fun is_empty(partners: &Partners): bool {
         sui::vec_map::is_empty(&partners.partners)
+    }
+
+    /// Returns the maximum referral fee rate.
+    /// 
+    /// # Returns
+    /// The maximum referral fee rate in basis points
+    public fun max_ref_fee_rate(): u64 {
+        80 * clmm_pool::config::protocol_fee_rate_denom() / 100 // 80%
     }
 
     #[test_only]

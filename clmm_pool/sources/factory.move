@@ -25,13 +25,13 @@
 module clmm_pool::factory {
 
     /// Error codes for the factory module
-    const EPoolAlreadyExists: u64 = 1;
-    const EInvalidSqrtPrice: u64 = 2;
-    const ESameCoinTypes: u64 = 3;
-    const EExceededMaxAmountB: u64 = 4;
-    const EExceededMaxAmountA: u64 = 5;
-    const EInvalidCoinOrder: u64 = 6;
-    const EInvalidBytesLength: u64 = 8;
+    const EPoolAlreadyExists: u64 = 924369306373425236;
+    const EInvalidSqrtPrice: u64 = 923692497321135234;
+    const ESameCoinTypes: u64 = 923969347438330212;
+    const EExceededMaxAmountB: u64 = 995379293462347203;
+    const EExceededMaxAmountA: u64 = 921263237432321235;
+    const EInvalidCoinOrder: u64 = 923702346234613273;
+    const EInvalidBytesLength: u64 = 913468309285702395;
 
     /// Represents the factory state for pool management.
     /// This structure is used to maintain factory-level state and settings.
@@ -394,31 +394,34 @@ module clmm_pool::factory {
     
     /// Fetches pool information from the pools table.
     /// 
-    /// If `pool_ids` is empty, the method starts from the head of the linked table and returns
+    /// If `pre_start_pool_id` is None, the method starts from the head of the linked table and returns
     /// information about pools in the order they are stored in the table, up to the specified limit.
     /// 
-    /// If `pool_ids` is not empty, the method starts from the first ID in the vector and returns
-    /// information about pools starting from that ID, up to the specified limit.
+    /// If `pre_start_pool_id` is Some, the method starts from the next pool after the specified ID and returns
+    /// information about pools starting from that point, up to the specified limit.
     /// 
     /// # Parameters
     /// * `pools` - Reference to the Pools object containing the linked table of pools
-    /// * `pool_ids` - Vector of pool IDs to start fetching from. If empty, starts from the head of the table
+    /// * `pre_start_pool_id` - Optional pool ID to start fetching after. If None, starts from the beginning of the table.
     /// * `limit` - Maximum number of pools to return
     /// 
     /// # Returns
     /// Vector of PoolSimpleInfo containing information about the requested pools
-    public fun fetch_pools(pools: &Pools, pool_ids: vector<sui::object::ID>, limit: u64): vector<PoolSimpleInfo> {
+    public fun fetch_pools(
+        pools: &Pools,
+        pre_start_pool_id: Option<sui::object::ID>,
+        limit: u64
+    ): vector<PoolSimpleInfo> {
         let mut result = std::vector::empty<PoolSimpleInfo>();
-        let next_id = if (std::vector::is_empty<sui::object::ID>(&pool_ids)) {
+        let next_id = if (std::option::is_none<sui::object::ID>(&pre_start_pool_id)) {
             move_stl::linked_table::head<sui::object::ID, PoolSimpleInfo>(&pools.list)
         } else {
-            // move_stl::linked_table::next<sui::object::ID, PoolSimpleInfo>(
-            //     move_stl::linked_table::borrow_node<sui::object::ID, PoolSimpleInfo>(
-            //         &pools.list,
-            //         *std::vector::borrow<sui::object::ID>(&pool_ids, 0)
-            //     )
-            // )
-            std::option::some<sui::object::ID>(*std::vector::borrow<sui::object::ID>(&pool_ids, 0))
+            move_stl::linked_table::next<sui::object::ID, PoolSimpleInfo>(
+                move_stl::linked_table::borrow_node<sui::object::ID, PoolSimpleInfo>(
+                    &pools.list,
+                    *std::option::borrow<sui::object::ID>(&pre_start_pool_id)
+                )
+            )
         };
         let mut current_id = next_id;
         let mut count = 0;
@@ -489,6 +492,7 @@ module clmm_pool::factory {
     /// * If the coin types are in lexicographical order (error code: EInvalidCoinOrder)
     public fun new_pool_key<CoinTypeA, CoinTypeB>(tick_spacing: u32): sui::object::ID {
         let type_name_a = std::type_name::into_string(std::type_name::get<CoinTypeA>());
+        let bytes_type_name_a = *std::ascii::as_bytes(&type_name_a);
         let mut bytes_a = *std::ascii::as_bytes(&type_name_a);
         let type_name_b = std::type_name::into_string(std::type_name::get<CoinTypeB>());
         let bytes_b = std::ascii::as_bytes(&type_name_b);
@@ -496,9 +500,9 @@ module clmm_pool::factory {
         let mut swapped = false;
         while (index < std::vector::length<u8>(bytes_b)) {
             let byte_b = *std::vector::borrow<u8>(bytes_b, index);
-            let should_compare = !swapped && index < std::vector::length<u8>(&bytes_a);
+            let should_compare = !swapped && index < std::vector::length<u8>(&bytes_type_name_a);
             if (should_compare) {
-                let byte_a = *std::vector::borrow<u8>(&bytes_a, index);
+                let byte_a = *std::vector::borrow<u8>(&bytes_type_name_a, index);
                 if (byte_a < byte_b) {
                     abort EInvalidCoinOrder
                 };
@@ -511,7 +515,7 @@ module clmm_pool::factory {
             continue;
         };
         if (!swapped) {
-            if (std::vector::length<u8>(&bytes_a) < std::vector::length<u8>(bytes_b)) {
+            if (std::vector::length<u8>(&bytes_type_name_a) < std::vector::length<u8>(bytes_b)) {
                 abort EInvalidBytesLength
             };
         };

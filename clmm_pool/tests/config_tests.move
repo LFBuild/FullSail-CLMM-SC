@@ -19,7 +19,7 @@ module clmm_pool::config_tests {
         scenario.next_tx(admin);
         {
             let global_config = scenario.take_shared<config::GlobalConfig>();
-            assert!(config::get_protocol_fee_rate(&global_config) == 2000, 1);
+            assert!(config::protocol_fee_rate(&global_config) == 2000, 1);
             assert!(config::unstaked_liquidity_fee_rate(&global_config) == 0, 2);
             test_scenario::return_shared(global_config);
         };
@@ -39,7 +39,7 @@ module clmm_pool::config_tests {
         test_scenario::next_tx(&mut scenario, admin);
         {
             let global_config = test_scenario::take_shared<config::GlobalConfig>(&scenario);
-            assert!(config::get_protocol_fee_rate(&global_config) == 3000, 3);
+            assert!(config::protocol_fee_rate(&global_config) == 3000, 3);
             assert!(config::unstaked_liquidity_fee_rate(&global_config) == 1000, 4);
             test_scenario::return_shared(global_config);
         };
@@ -96,43 +96,6 @@ module clmm_pool::config_tests {
             let admin_cap = test_scenario::take_from_sender<config::AdminCap>(&scenario);
             let mut global_config = test_scenario::take_shared<config::GlobalConfig>(&scenario);
             config::delete_fee_tier(&mut global_config, 10, scenario.ctx());
-            test_scenario::return_shared(global_config);
-            transfer::public_transfer(admin_cap, admin);
-        };
-
-        test_scenario::end(scenario);
-    }
-
-    #[test]
-    fun test_gauge_management() {
-        let admin = @0x123;
-        let mut scenario = test_scenario::begin(admin);
-        {
-            config::test_init(scenario.ctx());
-        };
-
-        // Add gauge
-        test_scenario::next_tx(&mut scenario, admin);
-        {
-            let admin_cap = test_scenario::take_from_sender<config::AdminCap>(&scenario);
-            let mut global_config = test_scenario::take_shared<config::GlobalConfig>(&scenario);
-            let gauge_id = object::id(&admin_cap);
-            let gauge_ids = vector::singleton(gauge_id);
-            config::update_gauge_liveness(&mut global_config, gauge_ids, true, scenario.ctx());
-            assert!(config::is_gauge_alive(&global_config, gauge_id), 1);
-            test_scenario::return_shared(global_config);
-            transfer::public_transfer(admin_cap, admin);
-        };
-
-        // Delete gauge
-        test_scenario::next_tx(&mut scenario, admin);
-        {
-            let admin_cap = test_scenario::take_from_sender<config::AdminCap>(&scenario);
-            let mut global_config = test_scenario::take_shared<config::GlobalConfig>(&scenario);
-            let gauge_id = object::id(&admin_cap);
-            let gauge_ids = vector::singleton(gauge_id);
-            config::update_gauge_liveness(&mut global_config, gauge_ids, false, scenario.ctx());
-            assert!(!config::is_gauge_alive(&global_config, gauge_id), 2);
             test_scenario::return_shared(global_config);
             transfer::public_transfer(admin_cap, admin);
         };
@@ -222,58 +185,6 @@ module clmm_pool::config_tests {
             config::delete_fee_tier(&mut global_config, 10, scenario.ctx());
             test_scenario::return_shared(global_config);
             transfer::public_transfer(admin_cap, admin);
-        };
-
-        scenario.end();
-    }
-
-    #[test]
-    #[expected_failure(abort_code = config::EEmptyGaugeIds)]
-    fun test_gauge_management_validation() {
-        let admin = @0x123;
-        let mut scenario = test_scenario::begin(admin);
-        
-        // Initialize
-        {
-            config::test_init(scenario.ctx());
-        };
-
-        // Test empty vector
-        scenario.next_tx(admin);
-        {
-            let admin_cap = scenario.take_from_sender<config::AdminCap>();
-            let mut global_config = scenario.take_shared<config::GlobalConfig>();
-            
-            // Create empty vector
-            let empty_gauge_ids = vector::empty<sui::object::ID>();
-            
-            // This should fail with empty vector error
-            config::update_gauge_liveness(&mut global_config, empty_gauge_ids, true, scenario.ctx());
-            
-            test_scenario::return_shared(global_config);
-            transfer::public_transfer(admin_cap, admin);
-        };
-
-        scenario.end();
-    }
-
-    #[test]
-    #[expected_failure(abort_code = config::EPoolManagerRole)]
-    fun test_pool_manager_role_validation() {
-        let admin = @0x123;
-        let user = @0x456;
-        let mut scenario = test_scenario::begin(admin);
-        {
-            config::test_init(scenario.ctx());
-        };
-
-        // Try to update gauge liveness without pool manager role
-        scenario.next_tx(user);
-        {
-            let mut global_config = scenario.take_shared<config::GlobalConfig>();
-            let gauge_ids = vector::singleton(object::id(&global_config));
-            config::update_gauge_liveness(&mut global_config, gauge_ids, true, scenario.ctx());
-            test_scenario::return_shared(global_config);
         };
 
         scenario.end();
@@ -377,7 +288,7 @@ module clmm_pool::config_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 1)]
+    #[expected_failure(abort_code = clmm_pool::acl::EInvalidRole)]
     fun test_role_management_validation() {
         let admin = @0x123;
         let user = @0x456;

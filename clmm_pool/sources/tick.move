@@ -24,11 +24,11 @@
 /// * Tick initialization events
 module clmm_pool::tick {
     /// Error codes for the tick module
-    const ELiquidityOverflow: u64 = 0;
-    const EInsufficientLiquidity: u64 = 1;
-    const EInvalidTickBound: u64 = 2;
-    const ETickNotFound: u64 = 3;
-    const EInsufficientStakedLiquidity: u64 = 9223372401926995967;
+    const ELiquidityOverflow: u64 = 935023952692306293;
+    const EInsufficientLiquidity: u64 = 943068340693460876;
+    const EInvalidTickBound: u64 = 928342609347692347;
+    const ETickNotFound: u64 = 923486792304678036;
+    const EInsufficientStakedLiquidity: u64 = 943632097802734477;
 
     /// Manager for tick operations in the pool.
     /// Handles tick spacing and maintains a skip list of all ticks.
@@ -344,12 +344,13 @@ module clmm_pool::tick {
         (tick.fee_growth_outside_a, tick.fee_growth_outside_b)
     }
     
-    /// Fetches a list of ticks starting from a specified index or the first tick.
+    /// Retrieves a paginated list of ticks. If pre_start_tick_index is None, starts from the first tick,
+    /// otherwise starts from the next tick after the specified pre_start_tick_index.
     /// Returns up to the specified limit of ticks.
     /// 
     /// # Arguments
     /// * `tick_manager` - Reference to the tick manager
-    /// * `tick_indexes` - Vector of tick indexes to start from (if empty, starts from first tick)
+    /// * `pre_start_tick_index` - Optional tick index to start fetching after. If None, starts from the beginning of the list.
     /// * `limit` - Maximum number of ticks to return
     /// 
     /// # Returns
@@ -357,29 +358,30 @@ module clmm_pool::tick {
     /// 
     /// # Abort Conditions
     /// * If tick index is out of bounds (error code: 2)
-    public fun fetch_ticks(tick_manager: &TickManager, tick_indexes: vector<u32>, limit: u64): vector<Tick> {
+    public fun fetch_ticks(
+        tick_manager: &TickManager, 
+        pre_start_tick_index: Option<u32>, 
+        limit: u64): vector<Tick> {
         let mut result = std::vector::empty<Tick>();
-        let next_score = if (std::vector::is_empty<u32>(&tick_indexes)) {
+        let next_score = if (std::option::is_none<u32>(&pre_start_tick_index)) {
             move_stl::skip_list::head<Tick>(&tick_manager.ticks)
         } else {
             move_stl::skip_list::find_next<Tick>(
                 &tick_manager.ticks,
-                tick_score(integer_mate::i32::from_u32(*std::vector::borrow<u32>(&tick_indexes, 0))),
+                tick_score(integer_mate::i32::from_u32(*std::option::borrow<u32>(&pre_start_tick_index))),
                 false
             )
         };
         let mut current_score = next_score;
         let mut count = 0;
-        while (move_stl::option_u64::is_some(&current_score)) {
+        while (move_stl::option_u64::is_some(&current_score) && count < limit) {
             let node = move_stl::skip_list::borrow_node<Tick>(&tick_manager.ticks, move_stl::option_u64::borrow(&current_score));
             std::vector::push_back<Tick>(&mut result, *move_stl::skip_list::borrow_value<Tick>(node));
             current_score = move_stl::skip_list::next_score<Tick>(node);
-            let new_count = count + 1;
-            count = new_count;
-            if (new_count == limit) {
-                break
-            };
+
+            count = count + 1;
         };
+        
         result
     }
 
@@ -917,7 +919,7 @@ module clmm_pool::tick {
         tick: &mut Tick,
         current_tick_index: integer_mate::i32::I32,
         liquidity: u128,
-        is_lower_initialized: bool,
+        is_tick_initialized: bool,
         is_add: bool,
         is_upper: bool,
         fee_growth_global_a: u128,
@@ -936,7 +938,7 @@ module clmm_pool::tick {
         if (updated_liquidity_gross == 0) {
             return 0
         };
-        let (points_growth_outside, fullsail_growth_outside, fee_growth_outside_a, fee_growth_outside_b, rewards_growth_outside) = if (is_lower_initialized) {
+        let (points_growth_outside, fullsail_growth_outside, fee_growth_outside_a, fee_growth_outside_b, rewards_growth_outside) = if (is_tick_initialized) {
             let (fee_outside_a, fee_outside_b, rewards_outside, points_outside, fullsail_outside) = if (integer_mate::i32::lt(current_tick_index, tick.index)) {
                 (0, 0, default_rewards_growth_outside(std::vector::length<u128>(&rewards_growth_global)), 0, 0)
             } else {
