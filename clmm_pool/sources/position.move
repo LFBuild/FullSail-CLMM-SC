@@ -990,6 +990,7 @@ module clmm_pool::position {
     /// * `global_config` - Reference to the global configuration
     /// * `publisher` - Reference to the package publisher
     /// * `description` - Custom description for the position
+    /// * `image_url` - Image URL for the position
     /// * `link` - Custom link to the position in Fullsail Finance app
     /// * `project_url` - URL of the project website
     /// * `creator` - Name of the position creator
@@ -1013,6 +1014,7 @@ module clmm_pool::position {
         publisher: &sui::package::Publisher,
         description: std::string::String,
         link: std::string::String,
+        image_url: std::string::String,
         project_url: std::string::String,
         creator: std::string::String,
         ctx: &mut sui::tx_context::TxContext
@@ -1026,7 +1028,7 @@ module clmm_pool::position {
             std::string::utf8(b"{coin_type_a}"),
             std::string::utf8(b"{coin_type_b}"),
             link,
-            std::string::utf8(b"{url}"),
+            image_url,
             description,
             project_url,
             creator,
