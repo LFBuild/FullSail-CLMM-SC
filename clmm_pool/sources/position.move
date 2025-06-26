@@ -1043,8 +1043,8 @@ module clmm_pool::position {
     /// * `global_config` - Reference to the global configuration
     /// * `publisher` - Reference to the package publisher
     /// * `description` - Custom description for the position
-    /// * `image_url` - Image URL for the position
     /// * `link` - Custom link to the position in Fullsail Finance app
+    /// * `image_url` - Image URL for the position
     /// * `project_url` - URL of the project website
     /// * `creator` - Name of the position creator
     /// * `ctx` - Mutable reference to the transaction context
