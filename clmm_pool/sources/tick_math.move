@@ -350,9 +350,7 @@ module clmm_pool::tick_math {
         };
 
         // Calculate tick range
-        // 59543866431366 = 2^96 / (2^32 * 1.0001^(0.5))
-        // 184467440737095516 = 2^64 * 1.0001^(0.5)
-        // 15793534762490258745 = 2^64 * 1.0001^(0.5) * 2^32
+        // 59543866431366 = 2/log_2(1.0001) in format Q32.32
         let multiplied = integer_mate::i128::mul(result, integer_mate::i128::from(59543866431366));
         let tick_low = integer_mate::i128::as_i32(
             integer_mate::i128::shr(integer_mate::i128::sub(multiplied, integer_mate::i128::from(184467440737095516)), 64)
