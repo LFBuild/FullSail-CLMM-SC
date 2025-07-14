@@ -14,16 +14,16 @@ Check [docs](./docs) for more details.
     - package: `0x2d8a7d4c585f1c20758f9b2c500477e1be35e178e79efb6ddf9d14a0dceff211`
 - [integer_mate](https://suivision.xyz/txblock/CWQ5cMDkAGu6o8nCWDix25KGpnBXRLt2bZdVchacjRVN) 
     - package: `0x6b904ae739b2baad330aae14991abcd3b7354d3dc3db72507ed8dabeeb7a36de`
-- [gauge_cap](https://suivision.xyz/txblock/25XhYogu33YdbbwXCC3ZmNPm5ymRZLwjhAreMxSWXK42)
-    - package: `0x87f66825acbef84aab01c74c07c3095e9f92d89125f3b98077a0f263df276671`
-- [price_provider](https://suivision.xyz/txblock/8m963qYvXW4qqo7aBpDr3dgqUsaUTQpuFqe9MD9rbe4P?tab=Overview)
-    - package: `0x6b50d71d78317657f9b69a59a8c257b52af91309a237157a3cd1f2622bf09490`
-    - PriceProvider: `0x7d32649a4868e4ebed4ae1c2ab1fa65a8ca9e79610b87b2a35178466fe9a975d`
-- [clmm_pool](https://suivision.xyz/txblock/49Ejwwjrh95XYNbMCgMxTzK2cLPwhTR4xFxtAncXQTQt)
-    - package: `0x91657507890f065ad5ac9ad5f585ad54cce127f51d893ada7a18fa331a88af3c`
-    - Pools: `0x845d17378d1d7d2794d334f57020c7cd88c67cab7e3d59539e4ae4dfe4fa12ee`
-    - RewarderGlobalVault `0x27357a0fecc8a3737ed7ec2e2cf9fdde6a7dbb02fefbc5352be83cd8a1c789a5`
-    - GlobalConfig `0xf7cc6cd9d2ff3d62b245c30f5f862280751aee025a8578c4e09db76af496dc84`
-    - Stats `0x63e5dadf8a09fa75f2ebd9b2d8fbbc032cb9e495c583cf88b69f180038d98eac`
-    - Partners `0x29f38930f85a4ff521005ae87e2a5cb0cc52f473efb1f1d2f907d4bc807e25d0`
+- [gauge_cap](https://suivision.xyz/txblock/5gUwR3gM4oJEPvCeMAK8PoMUn8DBhcj7kb2bXUZQMDvt)
+    - package: `0xdcadf99db0a0712e81c4b47135aaa7e4ef0f6d5f5e470a2e829423cc2e900d93`
+- [price_provider](https://suivision.xyz/txblock/EZYFUhSMSfJVTfcvPUkzmNfgiERJKAwmBLrcksw55z8L?tab=Overview)
+    - package: `0xbabc52a05c5da5d60b6de420f8e446172c0482a194a07fcc4e554905d77ec89e`
+    - PriceProvider: `0x4f10f647979c2685024d4a7657c00205d36764b1b358bd475fd57710e309827c`
+- [clmm_pool](https://suivision.xyz/txblock/349ZvmPo9sR8AdwvFqpxGbVrypUDng6xB761rciND6SD)
+    - package: `0x13ee70242d830af3a16756a875f7333fa023382d48be503b2ad9b7358ed2b7ee`
+    - Pools: `0x8fa2fb293ae7d410f8223fbb5e16ffd2004193bf0a5fb6beb6c1cacd5ec198ee`
+    - RewarderGlobalVault `0x46bd16d1832de21a2614bd2e65d4232747b42e3b26d45fb009236a4a01ce7926`
+    - GlobalConfig `0x2d7c926687a545dd7f4a80bbb2887ea88cfab10df99b92b33962ab04b472c1d3`
+    - Stats `0x1873825d4d130b05368cea2ed9f550022955476d488d612487c068009490c5aa`
+    - Partners `0x20b9fb78276d65074c51070eb4eba3583aa1dbe4c2535c0507747c7c2c3002a3`
 
