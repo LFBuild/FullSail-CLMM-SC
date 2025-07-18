@@ -417,6 +417,13 @@ module clmm_pool::pool {
         amount: u64,
     }
 
+    public struct CollectRewardEventV2 has copy, drop, store {
+        position: sui::object::ID,
+        pool: sui::object::ID,
+        amount: u64,
+        token_type: std::type_name::TypeName,
+    }
+
     /// Event emitted when gauge fees are collected.
     /// 
     /// # Fields
@@ -2026,7 +2033,14 @@ module clmm_pool::pool {
             pool: sui::object::id<Pool<CoinTypeA, CoinTypeB>>(pool),
             amount: reward_amount,
         };
+        let event_v2 = CollectRewardEventV2 {
+            position: position_id,
+            pool: sui::object::id<Pool<CoinTypeA, CoinTypeB>>(pool),
+            amount: reward_amount,
+            token_type: std::type_name::get<RewardCoinType>(),   
+        };
         sui::event::emit<CollectRewardEvent>(event);
+        sui::event::emit<CollectRewardEventV2>(event_v2);
         clmm_pool::rewarder::withdraw_reward<RewardCoinType>(rewarder_vault, reward_amount)
     }
     
