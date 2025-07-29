@@ -113,6 +113,16 @@ module clmm_pool::rewarder {
         after_amount: u64,
     }
 
+    /// Event emitted when a reward balance is depleted.
+    /// 
+    /// # Fields
+    /// * `reward_type` - Type of the reward
+    /// * `emission_rate` - Rate of reward emission
+    public struct RewardBalanceDepletedEvent has copy, drop, store {
+        reward_type: std::type_name::TypeName,
+        emission_rate: u128,
+    }
+
     /// Creates a new RewarderManager instance with default values.
     /// Initializes all fields to their zero values.
     /// 
@@ -486,6 +496,12 @@ module clmm_pool::rewarder {
                     liquidity
                 );
                 vault.available_balance.add(rewarder.reward_coin, 0);
+
+                let event = RewardBalanceDepletedEvent {
+                    reward_type: rewarder.reward_coin,
+                    emission_rate: rewarder.emissions_per_second,
+                };
+                sui::event::emit<RewardBalanceDepletedEvent>(event);
             } else {
                 vault.available_balance.add(rewarder.reward_coin, available_balance - (add_growth_global * liquidity));
             };
