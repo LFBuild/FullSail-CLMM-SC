@@ -1036,6 +1036,61 @@ module clmm_pool::position {
         sui::transfer::public_transfer<sui::display::Display<Position>>(display, sui::tx_context::sender(ctx));
     }
 
+    /// Sets up display fields for a position with custom metadata (v2 with missing image_url).
+    /// This function configures how the position will be displayed in the Fullsail Finance interface.
+    /// 
+    /// # Arguments
+    /// * `global_config` - Reference to the global configuration
+    /// * `publisher` - Reference to the package publisher
+    /// * `description` - Custom description for the position
+    /// * `link` - Custom link to the position in Fullsail Finance app
+    /// * `image_url` - Image URL for the position
+    /// * `project_url` - URL of the project website
+    /// * `creator` - Name of the position creator
+    /// * `ctx` - Mutable reference to the transaction context
+    /// 
+    /// # Details
+    /// Sets up the following display fields:
+    /// * name - Position name (template: "{name}")
+    /// * coin_a - First token type (template: "{coin_type_a}")
+    /// * coin_b - Second token type (template: "{coin_type_b}")
+    /// * link - Custom position link
+    /// * image_url - Position image URL (template: "{url}")
+    /// * description - Custom description
+    /// * project_url - Custom project website
+    /// * creator - Custom creator name
+    /// 
+    /// # Abort Conditions
+    /// * If the package version check fails
+    public fun set_display_v2(
+        global_config: &clmm_pool::config::GlobalConfig,
+        publisher: &sui::package::Publisher,
+        description: std::string::String,
+        link: std::string::String,
+        image_url: std::string::String,
+        project_url: std::string::String,
+        creator: std::string::String,
+        ctx: &mut sui::tx_context::TxContext
+    ) {
+        assert!(publisher.from_module<Position>(), ENotOwner);
+        clmm_pool::config::checked_package_version(global_config);
+
+        let display = update_display(
+            publisher,
+            std::string::utf8(b"{name}"),
+            std::string::utf8(b"{coin_type_a}"),
+            std::string::utf8(b"{coin_type_b}"),
+            link,
+            image_url,
+            description,
+            project_url,
+            creator,
+            ctx
+        );
+
+        sui::transfer::public_transfer<sui::display::Display<Position>>(display, sui::tx_context::sender(ctx));
+    }
+
     /// Updates the display fields for a position.
     /// This function sets up the display fields for a position with the given parameters.
     /// 

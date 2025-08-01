@@ -417,6 +417,13 @@ module clmm_pool::pool {
         amount: u64,
     }
 
+    public struct CollectRewardEventV2 has copy, drop, store {
+        position: sui::object::ID,
+        pool: sui::object::ID,
+        amount: u64,
+        token_type: std::type_name::TypeName,
+    }
+
     /// Event emitted when gauge fees are collected.
     /// 
     /// # Fields
@@ -1041,24 +1048,6 @@ module clmm_pool::pool {
         (receipt.amount_a, receipt.amount_b)
     }
 
-    /// Calculates the unstaked fee portion and updates the total amount.
-    /// This function applies the unstaked fee rate to calculate the portion of fees
-    /// that should be distributed to unstaked liquidity providers.
-    ///
-    /// # Arguments
-    /// * `fee_amount` - The total fee amount to be distributed
-    /// * `total_amount` - The total amount before fee distribution
-    /// * `unstaked_fee_rate` - The fee rate for unstaked liquidity (in basis points)
-    ///
-    /// # Returns
-    /// A tuple containing (staked_fee, updated_total) where:
-    /// * `staked_fee` - The fee amount for staked liquidity
-    /// * `updated_total` - The total amount after fee distribution
-    fun apply_unstaked_fees(fee_amount: u128, total_amount: u128, unstaked_fee_rate: u64): (u128, u128) {
-        let unstaked_fee = integer_mate::full_math_u128::mul_div_ceil(fee_amount, unstaked_fee_rate as u128, clmm_pool::config::unstaked_liquidity_fee_rate_denom() as u128);
-        (fee_amount - unstaked_fee, total_amount + unstaked_fee)
-    }
-
     /// Returns the current balances of both tokens in the pool.
     ///
     /// # Arguments
@@ -1263,7 +1252,6 @@ module clmm_pool::pool {
     /// This function handles the fee splitting logic based on the total liquidity and staked liquidity.
     ///
     /// # Arguments
-    /// * `pool` - The pool containing the liquidity information
     /// * `fee_amount` - The total amount of fees to distribute
     /// * `total_liquidity` - The total liquidity in the pool
     /// * `staked_liquidity` - The amount of staked liquidity
@@ -1271,8 +1259,8 @@ module clmm_pool::pool {
     ///
     /// # Returns
     /// A tuple containing:
-    /// * The amount of fees allocated to staked liquidity providers
-    /// * The amount of fees allocated to unstaked liquidity providers
+    /// * First value - Fee growth for unstaked liquidity
+    /// * Second value - Gauge fee amount collected for staked liquidity providers
     fun calculate_fees(
         fee_amount: u64,
         total_liquidity: u128,
@@ -1284,16 +1272,98 @@ module clmm_pool::pool {
         ) {
             (0, fee_amount)
         } else {
-            let (staked_fee, unstaked_fee) = if (staked_liquidity == 0) {
-                let (unstaked_amount, unstaked_fee_amount) = apply_unstaked_fees(fee_amount as u128, 0, unstaked_fee_rate);
-                (integer_mate::full_math_u128::mul_div_floor(unstaked_amount, Q64, total_liquidity), unstaked_fee_amount as u64)
+            let (unstaked_fee_growth, gauge_fee_amount) = if (staked_liquidity == 0) {
+                let (remaining_for_unstaked, gauge_fee_amount) = apply_unstaked_fees(
+                    fee_amount as u128, 
+                    0, 
+                    unstaked_fee_rate
+                );
+
+                (
+                    integer_mate::full_math_u128::mul_div_floor(
+                        remaining_for_unstaked, 
+                        Q64, 
+                        total_liquidity
+                    ), 
+                    gauge_fee_amount as u64
+                )
             } else {
-                let (staked_amount, unstaked_fee_amount) = split_fees(fee_amount, total_liquidity, staked_liquidity, unstaked_fee_rate);
-                (integer_mate::full_math_u128::mul_div_floor(staked_amount as u128, Q64, total_liquidity - staked_liquidity), unstaked_fee_amount)
+                let (remaining_for_unstaked, gauge_fee_amount) = split_fees(
+                    fee_amount, 
+                    total_liquidity, 
+                    staked_liquidity, 
+                    unstaked_fee_rate
+                );
+
+                (
+                    integer_mate::full_math_u128::mul_div_floor(
+                        remaining_for_unstaked as u128, 
+                        Q64, 
+                        (total_liquidity - staked_liquidity)
+                    ), 
+                    gauge_fee_amount
+                )
             };
 
-            (staked_fee, unstaked_fee)
+            (unstaked_fee_growth, gauge_fee_amount)
         }
+    }
+
+   /// Splits fees between staked and unstaked portions of liquidity.
+    /// Calculates fee distribution based on total liquidity and staked liquidity amounts,
+    /// and takes into account the unstaked fee rate.
+    ///
+    /// # Arguments
+    /// * `fee_amount` - Total fee amount to be distributed
+    /// * `total_liquidity` - Total liquidity in the pool
+    /// * `staked_liquidity` - Amount of staked liquidity
+    /// * `unstaked_fee_rate` - Fee rate for unstaked liquidity
+    ///
+    /// # Returns
+    /// A tuple of two values:
+    /// * First value - fee amount remaining for unstaked liquidity
+    /// * Second value - fee amount for gauge (staked liquidity)
+    fun split_fees(
+        fee_amount: u64,
+        total_liquidity: u128,
+        staked_liquidity: u128,
+        unstaked_fee_rate: u64
+    ): (u64, u64) {
+        let staked_fee_amount = integer_mate::full_math_u128::mul_div_ceil(
+            fee_amount as u128,
+            staked_liquidity,
+            total_liquidity
+        );
+        let (remaining_for_unstaked, gauge_fee_amount) = apply_unstaked_fees(
+            (fee_amount as u128) - staked_fee_amount,
+            staked_fee_amount,
+            unstaked_fee_rate
+        );
+
+        (remaining_for_unstaked as u64, gauge_fee_amount as u64)
+    }
+
+    /// Calculates the unstaked fee portion and updates the total amount.
+    /// This function applies the unstaked fee rate to calculate the portion of fees
+    /// that should be distributed to unstaked liquidity providers.
+    ///
+    /// # Arguments
+    /// * `fee_amount` - The total fee amount to be distributed
+    /// * `total_amount` - The total amount before fee distribution
+    /// * `unstaked_fee_rate` - The fee rate for unstaked liquidity (in basis points)
+    ///
+    /// # Returns
+    /// A tuple containing (remaining_for_unstaked, gauge_fee_amount) where:
+    /// * `remaining_for_unstaked` - The fee amount remaining for unstaked liquidity
+    /// * `gauge_fee_amount` - The fee amount collected for gauge (staked liquidity)
+    fun apply_unstaked_fees(fee_amount: u128, total_amount: u128, unstaked_fee_rate: u64): (u128, u128) {
+        let gauge_fee = integer_mate::full_math_u128::mul_div_ceil(
+            fee_amount, 
+            unstaked_fee_rate as u128, 
+            clmm_pool::config::unstaked_liquidity_fee_rate_denom() as u128
+        );
+
+        (fee_amount - gauge_fee, total_amount + gauge_fee)
     }
 
     /// Calculates the result of a swap operation in the pool without executing it.
@@ -1963,7 +2033,14 @@ module clmm_pool::pool {
             pool: sui::object::id<Pool<CoinTypeA, CoinTypeB>>(pool),
             amount: reward_amount,
         };
+        let event_v2 = CollectRewardEventV2 {
+            position: position_id,
+            pool: sui::object::id<Pool<CoinTypeA, CoinTypeB>>(pool),
+            amount: reward_amount,
+            token_type: std::type_name::get<RewardCoinType>(),   
+        };
         sui::event::emit<CollectRewardEvent>(event);
+        sui::event::emit<CollectRewardEventV2>(event_v2);
         clmm_pool::rewarder::withdraw_reward<RewardCoinType>(rewarder_vault, reward_amount)
     }
     
@@ -3140,40 +3217,6 @@ module clmm_pool::pool {
         let mut display = sui::display::new_with_fields<Pool<CoinTypeA, CoinTypeB>>(publisher, keys, values, ctx);
         sui::display::update_version<Pool<CoinTypeA, CoinTypeB>>(&mut display);
         sui::transfer::public_transfer<sui::display::Display<Pool<CoinTypeA, CoinTypeB>>>(display, sui::tx_context::sender(ctx));
-    }
-
-    /// Splits fees between staked and unstaked portions of liquidity.
-    /// Calculates fee distribution based on total liquidity and staked liquidity amounts,
-    /// and takes into account the unstaked fee rate.
-    ///
-    /// # Arguments
-    /// * `fee_amount` - Total fee amount to be distributed
-    /// * `total_liquidity` - Total liquidity in the pool
-    /// * `staked_liquidity` - Amount of staked liquidity
-    /// * `unstaked_fee_rate` - Fee rate for unstaked liquidity
-    ///
-    /// # Returns
-    /// A tuple of two values:
-    /// * First value - fee amount for staked liquidity
-    /// * Second value - fee amount for unstaked liquidity
-    fun split_fees(
-        fee_amount: u64,
-        total_liquidity: u128,
-        staked_liquidity: u128,
-        unstaked_fee_rate: u64
-    ): (u64, u64) {
-        let staked_fee_amount = integer_mate::full_math_u128::mul_div_ceil(
-            fee_amount as u128,
-            staked_liquidity,
-            total_liquidity
-        );
-        let (staked_amount, unstaked_amount) = apply_unstaked_fees(
-            (fee_amount as u128) - staked_fee_amount,
-            staked_fee_amount,
-            unstaked_fee_rate
-        );
-
-        (staked_amount as u64, unstaked_amount as u64)
     }
 
     /// Stakes liquidity in the fullsail distribution system for a given tick range.
