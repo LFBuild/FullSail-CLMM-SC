@@ -152,7 +152,7 @@ module clmm_pool::rewarder {
     public(package) fun add_rewarder<RewardCoinType>(rewarder_manager: &mut RewarderManager) {
         let rewarder_idx = rewarder_index<RewardCoinType>(rewarder_manager);
         assert!(std::option::is_none<u64>(&rewarder_idx), ERewarderAlreadyExists);
-        assert!(std::vector::length<Rewarder>(&rewarder_manager.rewarders) <= 2, EMaxRewardersExceeded);
+        assert!(std::vector::length<Rewarder>(&rewarder_manager.rewarders) <= 5, EMaxRewardersExceeded);
         let new_rewarder = Rewarder {
             reward_coin: std::type_name::get<RewardCoinType>(),
             emissions_per_second: 0,
