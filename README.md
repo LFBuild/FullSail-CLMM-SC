@@ -8,23 +8,21 @@ This repository contains the implementation of the FullSail CLMM SC.
 
 Check [docs](./docs) for more details.
 
-## Mainnet deployments
+## Mainnet test deployments
 
 - [move_stl](https://suivision.xyz/txblock/EUHqf4MGpxRjDodcW2TFq7EUDqRBcV8gsFgQARvE8zQF) 
     - package: `0x2d8a7d4c585f1c20758f9b2c500477e1be35e178e79efb6ddf9d14a0dceff211`
 - [integer_mate](https://suivision.xyz/txblock/CWQ5cMDkAGu6o8nCWDix25KGpnBXRLt2bZdVchacjRVN) 
     - package: `0x6b904ae739b2baad330aae14991abcd3b7354d3dc3db72507ed8dabeeb7a36de`
-- [gauge_cap](https://suivision.xyz/txblock/EzgXx1xJNBMS6krkPWJxfgx6KpT4oPh4Y8zydVWVTJ34)
-    - package: `0xfc5ce91b953f03c30e3e48ac1d2a7706d66697c25979aeb978f9fff3fbcde5b2`
-- [price_provider](https://suivision.xyz/txblock/BP8hsrBNWZPc5tb29XZQzdc7gGPP1gBYyZUbZPUa6LJG?tab=Overview)
-    - package: `0xb49be008cf304b1dae7e7ece661b5f1b0e15324bc1422ec8c73b10eb4a6dcb19`
-    - PriceProvider: `0x854b2d2c0381bb656ec962f8b443eb082654384cf97885359d1956c7d76e33c9`
-- [clmm_pool](https://suivision.xyz/txblock/4HVyzZWudh3LZSWZawyN3ZPgqotKiZ7fzbC5cycuT1AB)
-    - original package: `0xe74104c66dd9f16b3096db2cc00300e556aa92edc871be4bc052b5dfb80db239`
-    - Pools: `0x0efb954710df6648d090bdfa4a5e274843212d6eb3efe157ee465300086e3650`
-    - RewarderGlobalVault `0xfb971d3a2fb98bde74e1c30ba15a3d8bef60a02789e59ae0b91660aeed3e64e1`
-    - GlobalConfig `0xe93baa80cb570b3a494cbf0621b2ba96bc993926d34dc92508c9446f9a05d615`
-    - Stats `0x6822a33d1d971e040c32f7cc74507010d1fe786f7d06ab89135083ddb07d2dc2`
-    - Partners `0xd8bf42d4ab51ca7c938b44e0a83db4c1abe151ad36bb18e6934dce6ed299cbfd`
-- [clmm_pool upgrade 1](https://suivision.xyz/txblock/7VdktfjzNjNF4AoKnTNpLACNECz2m8NXvNX3wHLhncnf)
-    - latest package `0xecd737da1a3bdc7826dfda093bda6032f380b0e45265166c10b8041b125980b9`
+- [gauge_cap](https://suivision.xyz/txblock/CDcEEJQTMFK1h37xSfspjQ1RYqUT388RXgLX4ie7QnRM)
+    - package: `0xcc201c522d0e0d28d2206749210bc6979aef8475b0fa896d592b438487b66971`
+- [price_provider](https://suivision.xyz/txblock/6wbGXH2yLrqmz8GVaHmuKTfzuarHtfKMwTss6Tr52F3)
+    - package: `0xb60b8825a49a4e5b7663b51fe1ca75d718d7a72b19622e5fe2eb16da52f82982`
+    - PriceProvider: `0xb7593670f8873a3ad070bb5aef4e4c6264508fe0631179f57cee70cdf049c0c0`
+- [clmm_pool](https://suivision.xyz/txblock/9HBd5xAntAehZKDCCiW2AbsxxqdFqymwmm1c5Suv4YzJ)
+    - original package: `0xa46f7dc3f1f0f4978d81c9c52757554f6f4dc62f65f2ce586be34409aa3b8168`
+    - Pools: `0x2db43aacf4ef21508609f0eb7d9189609d56730d2d7824f30e6b5ca173578ef0`
+    - RewarderGlobalVault `0x4e622e4145ccb2b1011ebf0a115c94ea1edc62bd2c5405dbe3e6119db1637735`
+    - GlobalConfig `0x2d6954cb60c4c4c8aa2a78b731f4c312e7b18fb35e9286f8bf50020797a817b3`
+    - Stats `0xb8b975205aeb27302d72bf721610150c0d1507615f22cb86782e93144d8e6c8c`
+    - Partners `0xf89c19dd4b651de439f6a833b6bc0a63a9c21efa5b34d26b536e85bb4f2187b1`
