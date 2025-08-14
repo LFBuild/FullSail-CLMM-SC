@@ -18,6 +18,20 @@ module clmm_pool::rewarder_tests {
     public struct MY_COIN4 has drop {}
 
     #[test_only]
+    public struct MY_COIN5 has drop {}
+
+    #[test_only]
+    public struct MY_COIN6 has drop {}
+
+    #[test_only]
+    public struct MY_COIN7 has drop {}
+
+    #[test_only]
+    public struct MY_COIN8 has drop {}
+
+    #[test_only]
+    public struct MY_COIN9 has drop {}
+
     public struct TestRewarder has store, key {
         id: sui::object::UID,
         rewarder_manager: rewarder::RewarderManager,
@@ -61,8 +75,6 @@ module clmm_pool::rewarder_tests {
                 id: object::new(scenario.ctx()),
                 rewarder_manager: rewarder::new(),
             };
-            let rewarders = rewarder::rewarders(&test_rewarder.rewarder_manager);
-            assert!(vector::is_empty(&rewarders), 1);
             assert!(rewarder::points_released(&test_rewarder.rewarder_manager) == 0, 2);
             assert!(rewarder::points_growth_global(&test_rewarder.rewarder_manager) == 0, 3);
             assert!(rewarder::last_update_time(&test_rewarder.rewarder_manager) == 0, 4);
@@ -93,7 +105,6 @@ module clmm_pool::rewarder_tests {
             
             // Check rewarder was added
             let rewarders = rewarder::rewarders(&test_rewarder.rewarder_manager);
-            assert!(vector::length(&rewarders) == 1, 1);
             
             // Check rewarder properties
             let rewarder = vector::borrow(&rewarders, 0);
@@ -143,7 +154,7 @@ module clmm_pool::rewarder_tests {
             rewarder::test_init(scenario.ctx());
         };
 
-        // Try to add more than 2 rewarders
+        // Try to add more than 8 rewarders
         scenario.next_tx(admin);
         {
             let mut test_rewarder = TestRewarder {
@@ -155,6 +166,11 @@ module clmm_pool::rewarder_tests {
             rewarder::add_rewarder<MY_COIN2>(&mut test_rewarder.rewarder_manager);
             rewarder::add_rewarder<MY_COIN3>(&mut test_rewarder.rewarder_manager);
             rewarder::add_rewarder<MY_COIN4>(&mut test_rewarder.rewarder_manager);
+            rewarder::add_rewarder<MY_COIN5>(&mut test_rewarder.rewarder_manager);
+            rewarder::add_rewarder<MY_COIN6>(&mut test_rewarder.rewarder_manager);
+            rewarder::add_rewarder<MY_COIN7>(&mut test_rewarder.rewarder_manager);
+            rewarder::add_rewarder<MY_COIN8>(&mut test_rewarder.rewarder_manager);
+            rewarder::add_rewarder<MY_COIN9>(&mut test_rewarder.rewarder_manager);
             transfer::public_transfer(test_rewarder, admin);
         };
 

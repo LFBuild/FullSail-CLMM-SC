@@ -41,6 +41,9 @@ module clmm_pool::rewarder {
     /// Points growth multiplier for precision in calculations (Q64.64)
     const POINTS_GROWTH_MULTIPLIER: u128 = 1000000 << 64;
 
+    /// Reserved amount of rewarders
+    const MAX_REWARDERS: u64 = 8;
+
     /// Manager for reward distribution in the pool.
     /// Contains information about all rewarders, points, and timing.
     /// 
@@ -123,16 +126,8 @@ module clmm_pool::rewarder {
         emission_rate: u128,
     }
 
-    /// Creates a new RewarderManager instance with default values.
-    /// Initializes all fields to their zero values.
-    /// 
-    /// # Returns
-    /// A new RewarderManager instance with:
-    /// * Empty rewarders vector
-    /// * Zero points released
-    /// * Zero points growth
-    /// * Zero last updated time
-    public(package) fun new(): RewarderManager {
+    #[test_only]
+    public(package) fun new_deprecated(): RewarderManager {
         RewarderManager {
             rewarders: std::vector::empty<Rewarder>(),
             points_released: 0,
@@ -141,24 +136,52 @@ module clmm_pool::rewarder {
         }
     }
 
-    /// Adds a new rewarder configuration to the manager.
-    /// 
-    /// # Arguments
-    /// * `rewarder_manager` - Mutable reference to the rewarder manager
-    /// 
-    /// # Abort Conditions
-    /// * If the rewarder already exists (error code: ERewarderAlreadyExists)
-    /// * If the maximum number of rewarders (3) is exceeded (error code: EMaxRewardersExceeded)
+    /// Creates a new RewarderManager instance with default values.
+    public(package) fun new(): RewarderManager {
+        let mut rewarders = std::vector::empty<Rewarder>();
+        let mut index = 0;
+        // Pad rewarders array with unused rewarders.
+        while (index < MAX_REWARDERS) {
+            let new_rewarder = Rewarder {
+                reward_coin: std::type_name::get<bool>(),
+                emissions_per_second: 0,
+                growth_global: 0,
+            };
+            std::vector::push_back<Rewarder>(&mut rewarders, new_rewarder);
+            index = index + 1;
+        };
+        RewarderManager {
+            rewarders,
+            points_released: 0,
+            points_growth_global: 0,
+            last_updated_time: 0,
+        }
+    }
+
     public(package) fun add_rewarder<RewardCoinType>(rewarder_manager: &mut RewarderManager) {
         let rewarder_idx = rewarder_index<RewardCoinType>(rewarder_manager);
+        let initialized_rewarders_count = initialized_rewarders_count(rewarder_manager);
         assert!(std::option::is_none<u64>(&rewarder_idx), ERewarderAlreadyExists);
-        assert!(std::vector::length<Rewarder>(&rewarder_manager.rewarders) <= 5, EMaxRewardersExceeded);
-        let new_rewarder = Rewarder {
-            reward_coin: std::type_name::get<RewardCoinType>(),
-            emissions_per_second: 0,
-            growth_global: 0,
-        };
-        std::vector::push_back<Rewarder>(&mut rewarder_manager.rewarders, new_rewarder);
+        assert!(initialized_rewarders_count < MAX_REWARDERS, EMaxRewardersExceeded);
+        // we are mutating first unused rewarder making it initialized.
+        rewarder_manager.rewarders[initialized_rewarders_count].reward_coin = std::type_name::get<RewardCoinType>();
+    }
+
+    public fun upgrade_rewarder_v2(rewarder_manager: &mut RewarderManager) {
+        let mut rewarders_len = rewarder_manager.rewarders.length();
+
+        // Pad existing rewarders array with unused rewarders.
+        // Rewarders after MAX_REWARDERS will be used for oSAIL distribution
+        while (rewarders_len < MAX_REWARDERS) {
+            let new_rewarder = Rewarder {
+                // Bool is used to indicate unused rewarder
+                reward_coin: std::type_name::get<bool>(),
+                emissions_per_second: 0,
+                growth_global: 0,
+            };
+            rewarder_manager.rewarders.push_back(new_rewarder);
+            rewarders_len = rewarders_len + 1;
+        }
     }
 
     /// Gets the balance of a specific reward token in the vault.
@@ -201,9 +224,18 @@ module clmm_pool::rewarder {
     /// * If the rewarder is not found (error code: ERewarderNotFound)
     public(package) fun borrow_mut_rewarder<RewardCoinType>(manager: &mut RewarderManager): &mut Rewarder {
         let mut index = 0;
-        while (index < std::vector::length<Rewarder>(&manager.rewarders)) {
-            if (std::vector::borrow<Rewarder>(&manager.rewarders, index).reward_coin == std::type_name::get<RewardCoinType>()) {
-                return std::vector::borrow_mut<Rewarder>(&mut manager.rewarders, index)
+        let rewarders_len = manager.rewarders.length();
+        while (
+            index < rewarders_len && 
+            index < MAX_REWARDERS
+        ) {
+            let reward_coin = manager.rewarders[index].reward_coin;
+            if (reward_coin == std::type_name::get<RewardCoinType>()) {
+                return &mut manager.rewarders[index]
+            };
+            // if we meet uninitialized rewarder, we stop the loop
+            if (reward_coin == std::type_name::get<bool>()) {
+                break
             };
             index = index + 1;
         };
@@ -222,9 +254,18 @@ module clmm_pool::rewarder {
     /// * If the rewarder is not found (error code: ERewarderNotFound)
     public fun borrow_rewarder<RewardCoinType>(manager: &RewarderManager): &Rewarder {
         let mut index = 0;
-        while (index < std::vector::length<Rewarder>(&manager.rewarders)) {
-            if (std::vector::borrow<Rewarder>(&manager.rewarders, index).reward_coin == std::type_name::get<RewardCoinType>()) {
-                return std::vector::borrow<Rewarder>(&manager.rewarders, index)
+        let rewarders_len = manager.rewarders.length();
+        while (
+            index < rewarders_len && 
+            index < MAX_REWARDERS
+        ) {
+            let reward_coin = manager.rewarders[index].reward_coin;
+            if (reward_coin == std::type_name::get<RewardCoinType>()) {
+                return &manager.rewarders[index]
+            };
+            // if we meet uninitialized rewarder, we stop the loop
+            if (reward_coin == std::type_name::get<bool>()) {
+                break
             };
             index = index + 1;
         };
@@ -413,9 +454,14 @@ module clmm_pool::rewarder {
     /// Option containing the index if found, none otherwise
     public fun rewarder_index<RewardCoinType>(manager: &RewarderManager): std::option::Option<u64> {
         let mut index = 0;
-        while (index < std::vector::length<Rewarder>(&manager.rewarders)) {
-            if (std::vector::borrow<Rewarder>(&manager.rewarders, index).reward_coin == std::type_name::get<RewardCoinType>()) {
+        let rewarders_len = manager.rewarders.length();
+        while (index < rewarders_len && index < MAX_REWARDERS) {
+            let reward_coin = manager.rewarders[index].reward_coin;
+            if (reward_coin == std::type_name::get<RewardCoinType>()) {
                 return std::option::some<u64>(index)
+            };
+            if (reward_coin == std::type_name::get<bool>()) {
+                break
             };
             index = index + 1;
         };
@@ -433,6 +479,22 @@ module clmm_pool::rewarder {
         manager.rewarders
     }
 
+    /// We consider only rewarders with type != bool as initialized.
+    /// Rewarders with type == bool are created to pad the rewarders array to MAX_REWARDERS.
+    public fun initialized_rewarders_count(manager: &RewarderManager): u64 {
+        let mut index = 0;
+        let rewarders_len = manager.rewarders.length();
+        while (index < rewarders_len && index < MAX_REWARDERS) {
+            let reward_coin = manager.rewarders[index].reward_coin;
+            if (reward_coin == std::type_name::get<bool>()) {
+                break
+            };
+            index = index + 1;
+        };
+
+        index
+    }
+
     /// Gets the global growth values for all rewarders.
     /// 
     /// # Arguments
@@ -443,8 +505,13 @@ module clmm_pool::rewarder {
     public fun rewards_growth_global(manager: &RewarderManager): vector<u128> {
         let mut index = 0;
         let mut rewards = std::vector::empty<u128>();
-        while (index < std::vector::length<Rewarder>(&manager.rewarders)) {
-            std::vector::push_back<u128>(&mut rewards, std::vector::borrow<Rewarder>(&manager.rewarders, index).growth_global);
+        let rewarders_len = manager.rewarders.length();
+        while (index < rewarders_len && index < MAX_REWARDERS) {
+            let reward_coin = manager.rewarders[index].reward_coin;
+            if (reward_coin == std::type_name::get<bool>()) {
+                break
+            };
+            std::vector::push_back<u128>(&mut rewards, manager.rewarders[index].growth_global);
             index = index + 1;
         };
         rewards
@@ -473,8 +540,13 @@ module clmm_pool::rewarder {
         };
         let time_delta = current_time - last_time;
         let mut index = 0;
-        while (index < std::vector::length<Rewarder>(&manager.rewarders)) {
-            let rewarder = std::vector::borrow_mut<Rewarder>(&mut manager.rewarders, index);
+        let rewarders_len = manager.rewarders.length();
+        while (index < rewarders_len && index < MAX_REWARDERS) {
+            let rewarder = &mut manager.rewarders[index];
+            if (rewarder.reward_coin == std::type_name::get<bool>()) {
+                // uninitialized rewarder, we stop the loop
+                break
+            };
             if (!vault.available_balance.contains(rewarder.reward_coin) || 
                 rewarder.emissions_per_second == 0) {
     
