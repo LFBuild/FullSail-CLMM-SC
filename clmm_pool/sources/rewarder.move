@@ -27,11 +27,13 @@ module clmm_pool::rewarder {
     /// Error codes for the rewarder module
     const EMaxRewardersExceeded: u64 = 934062834076983206;
     const ERewarderAlreadyExists: u64 = 934862304673206987;
+    const EAddFullsailRewarderNotMigrated: u64 = 566893767442957950;
     const EInvalidTime: u64 = 923872347632063063;
     const EInsufficientBalance: u64 = 928307230473046907;
     const ERewarderNotFound: u64 = 923867923457032960;
     const EOverflowBalance: u64 = 92394823577283472;
     const EIncorrectWithdrawAmount: u64 = 94368340613806333;
+    const EOverflowWeeklyDistribution: u64 = 897918906902975900;
 
     const SECONDS_PER_DAY: u64 = 86400;
 
@@ -43,6 +45,8 @@ module clmm_pool::rewarder {
 
     /// Reserved amount of rewarders
     const MAX_REWARDERS: u64 = 8;
+
+    const FULLSAIL_EPOCH: u64 = 7 * 24 * 60 * 60;
 
     /// Manager for reward distribution in the pool.
     /// Contains information about all rewarders, points, and timing.
@@ -126,6 +130,13 @@ module clmm_pool::rewarder {
         emission_rate: u128,
     }
 
+    public struct SettleFullsailDistributionEvent has copy, drop, store {
+        pool_id: sui::object::ID,
+        reserve: u64,
+        growth_global: u128,
+        period_finish: u64,
+    }
+
     #[test_only]
     public(package) fun new_deprecated(): RewarderManager {
         RewarderManager {
@@ -158,6 +169,7 @@ module clmm_pool::rewarder {
         }
     }
 
+    /// Initializes a new rewarder for a specific reward token.
     public(package) fun add_rewarder<RewardCoinType>(rewarder_manager: &mut RewarderManager) {
         let rewarder_idx = rewarder_index<RewardCoinType>(rewarder_manager);
         let initialized_rewarders_count = initialized_rewarders_count(rewarder_manager);
@@ -167,7 +179,7 @@ module clmm_pool::rewarder {
         rewarder_manager.rewarders[initialized_rewarders_count].reward_coin = std::type_name::get<RewardCoinType>();
     }
 
-    public fun upgrade_rewarder_v2(rewarder_manager: &mut RewarderManager) {
+    public(package) fun upgrade_rewarder_to_v2(rewarder_manager: &mut RewarderManager) {
         let mut rewarders_len = rewarder_manager.rewarders.length();
 
         // Pad existing rewarders array with unused rewarders.
@@ -182,6 +194,18 @@ module clmm_pool::rewarder {
             rewarder_manager.rewarders.push_back(new_rewarder);
             rewarders_len = rewarders_len + 1;
         }
+    }
+
+    /// this is an object used to track oSAIL distribution. It is not acting as regular rewarder.
+    /// We are just using array of rewarders to store information about the distribution.
+    public(package) fun add_fullsail_rewarder<FullSailCoinType>(rewarder_manager: &mut RewarderManager) {
+        assert!(rewarder_manager.rewarders.length() >= MAX_REWARDERS, EAddFullsailRewarderNotMigrated);
+        let new_rewarder = Rewarder {
+            reward_coin: std::type_name::get<FullSailCoinType>(),
+            emissions_per_second: 0,
+            growth_global: 0,
+        };
+        rewarder_manager.rewarders.push_back(new_rewarder);
     }
 
     /// Gets the balance of a specific reward token in the vault.
@@ -590,6 +614,56 @@ module clmm_pool::rewarder {
             POINTS_GROWTH_MULTIPLIER,
             liquidity
         );
+    }
+
+    public(package) fun active_fullsail_rewarder_index(fullsail_distribution_start: u64, period_finish: u64): u64 {
+        (period_finish - fullsail_distribution_start - FULLSAIL_EPOCH) / FULLSAIL_EPOCH
+    }
+
+    public(package) fun settle_fullsail_distribution(
+        manager: &mut RewarderManager, 
+        pool_id: sui::object::ID,
+        staked_liquidity: u128,
+        fullsail_distribution_reserve: u64,
+        fullsail_distribution_start: u64,
+        period_finish: u64,
+        time_delta: u64,
+    ): (u64, u64, bool) {
+        let mut remaining_reserve = fullsail_distribution_reserve;
+        if (time_delta == 0 || staked_liquidity == 0 || fullsail_distribution_reserve == 0) {
+            return (remaining_reserve, 0, false)
+        };
+        let index = active_fullsail_rewarder_index(fullsail_distribution_start, period_finish);
+        let rewarder = &mut manager.rewarders[index];
+        if (rewarder.emissions_per_second == 0) {
+            return (remaining_reserve, 0, false)
+        };
+        let (calculated_distribution_q64, overflow) = integer_mate::math_u128::overflowing_mul(time_delta as u128, rewarder.emissions_per_second);
+        assert!(!overflow, EOverflowWeeklyDistribution);
+        let fullsail_distribution_reserve_q64 = fullsail_distribution_reserve as u128 << 64;
+        let actual_distribution_q64 = if (calculated_distribution_q64 > fullsail_distribution_reserve_q64) {
+            fullsail_distribution_reserve_q64
+        } else {
+            calculated_distribution_q64
+        };
+        let add_growth_global = actual_distribution_q64 / staked_liquidity;
+        let actual_distribution = (actual_distribution_q64 >> 64) as u64;
+        remaining_reserve = remaining_reserve - actual_distribution;
+        if (remaining_reserve == 0) {
+            rewarder.emissions_per_second = 0;
+        };
+        let updated_growth_global = manager.rewarders[index].growth_global + add_growth_global;
+        manager.rewarders[index].growth_global = updated_growth_global;
+
+        let event = SettleFullsailDistributionEvent {
+            pool_id: pool_id,
+            reserve: remaining_reserve,
+            growth_global: updated_growth_global,
+            period_finish: period_finish,
+        };
+        sui::event::emit<SettleFullsailDistributionEvent>(event);
+        
+        (remaining_reserve, actual_distribution, true)
     }
 
     /// Updates the emission rate for a specific reward token.

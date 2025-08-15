@@ -26,3 +26,5 @@ Check [docs](./docs) for more details.
     - GlobalConfig `0x2d6954cb60c4c4c8aa2a78b731f4c312e7b18fb35e9286f8bf50020797a817b3`
     - Stats `0xb8b975205aeb27302d72bf721610150c0d1507615f22cb86782e93144d8e6c8c`
     - Partners `0xf89c19dd4b651de439f6a833b6bc0a63a9c21efa5b34d26b536e85bb4f2187b1`
+- [clmm_pool upgrade](https://suivision.xyz/txblock/DR91HjRv4bHf31ysQdTuLAzZM2VRh2XpdHUokMa6hZw8)
+    - package `0x47985c6809bb75c3f8d86c65ec63ea86cd4e97970be302fbe071cb94422ef0ba`

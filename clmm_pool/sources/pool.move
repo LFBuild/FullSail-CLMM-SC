@@ -34,6 +34,7 @@ module clmm_pool::pool {
     const EInvalidPriceLimit: u64 = 923968203463984585;
     const EPoolIdMismatch: u64 = 983406230673426324;
     const EPoolPaused: u64 = 928340672346982340;
+    const EUpgradeRewarderInvalidPublisher: u64 = 9928032293287758;
     const EInvalidPoolOrPartnerId: u64 = 923860238604780344;
     const EPartnerIdMismatch: u64 = 928346702740340762;
     const EInvalidRefFeeRate: u64 = 943963409693460349;
@@ -51,6 +52,7 @@ module clmm_pool::pool {
     const EPoolAlreadyPaused: u64 = 922337673984396492;
     const EInsufficientStakedLiquidity: u64 = 922337902476656639;
     const EInvalidSyncFullsailDistributionTime: u64 = 932630496306302321;
+    const EInvalidSyncFullsailDistributionPeriodFinish: u64 = 661043817035929600;
 
     public struct POOL has drop {}
 
@@ -2806,6 +2808,11 @@ module clmm_pool::pool {
         sui::event::emit<AddRewarderEvent>(event);
     }
 
+    public fun upgrade_rewarder_to_v2<CoinTypeA, CoinTypeB>(pool: &mut Pool<CoinTypeA, CoinTypeB>, publisher: &sui::package::Publisher) {
+        assert!(publisher.from_module<POOL>(), EUpgradeRewarderInvalidPublisher);
+        clmm_pool::rewarder::upgrade_rewarder_to_v2(&mut pool.rewarder_manager);
+    }
+
     /// Returns whether the pool is currently paused.
     ///
     /// # Arguments
@@ -3546,20 +3553,34 @@ module clmm_pool::pool {
         assert!(!pool.is_pause, EPoolPaused);
         check_gauge_cap<CoinTypeA, CoinTypeB>(pool, gauge_cap);
         assert!(pool.fullsail_distribution_last_updated == clock.timestamp_ms() / 1000, EInvalidSyncFullsailDistributionTime);
-        pool.fullsail_distribution_rate = distribution_rate;
+        // period updates are handled via different function (update_fullsail_distribution_period)
+        assert!(pool.fullsail_distribution_period_finish == period_finish, EInvalidSyncFullsailDistributionPeriodFinish);
+
         pool.fullsail_distribution_reserve = distribution_reserve;
-        pool.fullsail_distribution_period_finish = period_finish;
-        pool.fullsail_distribution_rollover = 0;
         
         let event = SyncFullsailDistributionRewardEvent {
             pool_id: sui::object::id<Pool<CoinTypeA, CoinTypeB>>(pool),
             gauge_id: gauge_cap::gauge_cap::get_gauge_id(gauge_cap),
-            distribution_rate: pool.fullsail_distribution_rate,
+            distribution_rate: distribution_rate,
             distribution_reserve: pool.fullsail_distribution_reserve,
             period_finish: pool.fullsail_distribution_period_finish,
-            rollover: pool.fullsail_distribution_rollover
+            rollover: 0 // rollover is not used anymore
         };
         sui::event::emit<SyncFullsailDistributionRewardEvent>(event);
+    }
+
+    public fun update_fullsail_distribution_period<CoinTypeA, CoinTypeB, FullSailCoinType>(
+        pool: &mut Pool<CoinTypeA, CoinTypeB>,
+        gauge_cap: &gauge_cap::gauge_cap::GaugeCap,
+        period_finish: u64,
+        clock: &sui::clock::Clock
+    ) {
+        assert!(!pool.is_pause, EPoolPaused);
+        check_gauge_cap<CoinTypeA, CoinTypeB>(pool, gauge_cap);
+        assert!(pool.fullsail_distribution_last_updated == clock.timestamp_ms() / 1000, EInvalidSyncFullsailDistributionTime);
+        pool.update_fullsail_distribution_growth_global(gauge_cap, clock);
+        pool.fullsail_distribution_period_finish = period_finish;
+        clmm_pool::rewarder::add_fullsail_rewarder<FullSailCoinType>(&mut pool.rewarder_manager);
     }
 
     /// Returns a reference to the pool's tick manager.
@@ -3760,45 +3781,43 @@ module clmm_pool::pool {
         pool: &mut Pool<CoinTypeA, CoinTypeB>,
         clock: &sui::clock::Clock
     ): u64 {
+        let pool_id = object::id(pool);
+        let staked_liquidity = pool.fullsail_distribution_staked_liquidity;
+        let reserve = pool.fullsail_distribution_reserve;
+        let distribution_start = pool.get_fullsail_distribution_start();
+        let period_finish = pool.fullsail_distribution_period_finish;
         let current_timestamp = sui::clock::timestamp_ms(clock) / 1000;
         let time_delta = current_timestamp - pool.fullsail_distribution_last_updated;
-        let mut distributed_amount = 0;
-        if (time_delta != 0) {
-            if (pool.fullsail_distribution_reserve > 0) {
-                let calculated_distribution = integer_mate::full_math_u128::mul_div_floor(
-                    pool.fullsail_distribution_rate,
-                    time_delta as u128,
-                    Q64
-                ) as u64;
-                let mut actual_distribution = calculated_distribution;
-                if (calculated_distribution > pool.fullsail_distribution_reserve) {
-                    actual_distribution = pool.fullsail_distribution_reserve;
-                };
-                pool.fullsail_distribution_reserve = pool.fullsail_distribution_reserve - actual_distribution;
-                if (pool.fullsail_distribution_staked_liquidity > 0) {
-                    pool.fullsail_distribution_growth_global = pool.fullsail_distribution_growth_global + integer_mate::full_math_u128::mul_div_floor(
-                        actual_distribution as u128,
-                        Q64,
-                        pool.fullsail_distribution_staked_liquidity
-                    );
-                } else {
-                    pool.fullsail_distribution_rollover = pool.fullsail_distribution_rollover + actual_distribution;
-                };
-                distributed_amount = actual_distribution;
-
-                let event = UpdateFullsailDistributionGrowthGlobalEvent {
-                    pool_id: sui::object::id<Pool<CoinTypeA, CoinTypeB>>(pool),
-                    growth_global: pool.fullsail_distribution_growth_global,
-                    reserve: pool.fullsail_distribution_reserve,
-                    rollover: pool.fullsail_distribution_rollover
-                };
-                sui::event::emit<UpdateFullsailDistributionGrowthGlobalEvent>(event);
-            };
+        let (remaining_reserve, actual_distribution, updated) = clmm_pool::rewarder::settle_fullsail_distribution(
+            &mut pool.rewarder_manager,
+            pool_id,
+            staked_liquidity,
+            reserve,
+            distribution_start,
+            period_finish,
+            time_delta
+        );
+        if (updated) {
+            pool.fullsail_distribution_reserve = remaining_reserve;
             pool.fullsail_distribution_last_updated = current_timestamp;
         };
 
+        actual_distribution
+    }
 
-        distributed_amount
+    /// We use fullsail_distribution_rollover to store the start time of the fullsail distribution.
+    /// This is a hack to avoid creating a new object during upgrade.
+    fun set_fullsail_distribution_start<CoinTypeA, CoinTypeB>(
+        pool: &mut Pool<CoinTypeA, CoinTypeB>,
+        value: u64
+    ) {
+        pool.fullsail_distribution_rollover = value;
+    }
+
+    fun get_fullsail_distribution_start<CoinTypeA, CoinTypeB>(
+        pool: &Pool<CoinTypeA, CoinTypeB>
+    ): u64 {
+        pool.fullsail_distribution_rollover
     }
     
     /// Updates the internal state of fullsail distribution for a position, including staked liquidity and growth tracking.
