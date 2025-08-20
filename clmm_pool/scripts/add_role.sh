@@ -1,7 +1,7 @@
 source ./export.sh
 
 # Параметры для добавления роли
-export MEMBER_ADDRESS=0xd5553230a381cb6e1447c94751017a0235f997003cfbbd379fa8382408dbe434
+export MEMBER_ADDRESS=0xe28ed0b47bc4561cf70b0a2b058c530320f6ed109eebe0e8b59196990751961c
 export ROLE_ID=0 # роль POOL_MANAGER (0-127)
 
 sui client ptb \
