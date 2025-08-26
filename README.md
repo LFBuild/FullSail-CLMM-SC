@@ -6,6 +6,21 @@ U.S. Patent Application No. 63/861,982. The technology described herein is the s
 
 Full Sail has added a license to its Full Sail protocol code. You can view the terms of the license at [ULR](LICENSE/250825_Metabyte_Negotiated_Services_Agreement21634227_2_002.docx).
 
+## Audits
+
+Audit provider: **Asymptotic**
+
+Final report date: May 29, 2025
+
+Final commit: [here](https://github.com/LFBuild/FullSail-CLMM-SC/commit/e51f30a44b5a49b620608b9195aee72326a01581)
+
+Published: [here](https://info.asymptotic.tech/full-sail-clmm-audit)
+
+Audit scope:
+- `./clmm_pool`
+- `./gauge_cap`
+
+
 ## Overview
 
 This repository contains the implementation of the FullSail CLMM SC.
