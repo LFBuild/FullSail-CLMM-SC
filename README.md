@@ -29,6 +29,14 @@ This repository contains the implementation of the FullSail CLMM SC.
 
 Check [docs](./docs) for more details.
 
+## Mvr
+
+You can use Full Sail via https://www.moveregistry.com/
+
+```bash 
+mvr add @pkg/fullsail-clmm
+```
+
 ## Mainnet deployments
 
 - [move_stl](https://suivision.xyz/txblock/EUHqf4MGpxRjDodcW2TFq7EUDqRBcV8gsFgQARvE8zQF) 
