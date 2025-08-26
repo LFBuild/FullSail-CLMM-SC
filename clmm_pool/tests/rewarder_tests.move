@@ -27,6 +27,15 @@ module clmm_pool::rewarder_tests {
     public struct MY_COIN4 has drop {}
 
     #[test_only]
+    public struct MY_COIN5 has drop {}
+
+    #[test_only]
+    public struct MY_COIN6 has drop {}
+
+    #[test_only]
+    public struct MY_COIN7 has drop {}
+
+    #[test_only]
     public struct TestRewarder has store, key {
         id: sui::object::UID,
         rewarder_manager: rewarder::RewarderManager,
@@ -164,6 +173,9 @@ module clmm_pool::rewarder_tests {
             rewarder::add_rewarder<MY_COIN2>(&mut test_rewarder.rewarder_manager);
             rewarder::add_rewarder<MY_COIN3>(&mut test_rewarder.rewarder_manager);
             rewarder::add_rewarder<MY_COIN4>(&mut test_rewarder.rewarder_manager);
+            rewarder::add_rewarder<MY_COIN5>(&mut test_rewarder.rewarder_manager);
+            rewarder::add_rewarder<MY_COIN6>(&mut test_rewarder.rewarder_manager);
+            rewarder::add_rewarder<MY_COIN7>(&mut test_rewarder.rewarder_manager);
             transfer::public_transfer(test_rewarder, admin);
         };
 
