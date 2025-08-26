@@ -1,3 +1,7 @@
+/// © 2025 Metabyte Labs, Inc.  All Rights Reserved.
+/// U.S. Patent Application No. 63/861,982. The technology described herein is the subject of a pending U.S. patent application.
+/// Full Sail has added a license to its Full Sail protocol code. You can view the terms of the license at [ULR](LICENSE/250825_Metabyte_Negotiated_Services_Agreement21634227_2_002.docx).
+
 /// Position module for the CLMM (Concentrated Liquidity Market Maker) pool system.
 /// This module provides functionality for:
 /// * Managing liquidity positions in the pool
@@ -23,6 +27,10 @@
 /// * Fee collection events
 /// * Staking status change events
 module clmm_pool::position {
+    #[allow(unused_const)]
+    const COPYRIGHT_NOTICE: vector<u8> = b"© 2025 Metabyte Labs, Inc.  All Rights Reserved.";
+    #[allow(unused_const)]
+    const PATENT_NOTICE: vector<u8> = b"Patent pending - U.S. Patent Application No. 63/861,982";
 
     const ENotOwner: u64 = 985489328434574338;
     const EOverflow: u64 = 923065912304623497;

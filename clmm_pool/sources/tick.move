@@ -1,3 +1,7 @@
+/// © 2025 Metabyte Labs, Inc.  All Rights Reserved.
+/// U.S. Patent Application No. 63/861,982. The technology described herein is the subject of a pending U.S. patent application.
+/// Full Sail has added a license to its Full Sail protocol code. You can view the terms of the license at [ULR](LICENSE/250825_Metabyte_Negotiated_Services_Agreement21634227_2_002.docx).
+
 /// Tick module for the CLMM (Concentrated Liquidity Market Maker) pool system.
 /// This module provides functionality for:
 /// * Managing price ticks and their boundaries
@@ -23,6 +27,11 @@
 /// * Tick boundary crossing events
 /// * Tick initialization events
 module clmm_pool::tick {
+    #[allow(unused_const)]
+    const COPYRIGHT_NOTICE: vector<u8> = b"© 2025 Metabyte Labs, Inc.  All Rights Reserved.";
+    #[allow(unused_const)]
+    const PATENT_NOTICE: vector<u8> = b"Patent pending - U.S. Patent Application No. 63/861,982";
+
     /// Error codes for the tick module
     const ELiquidityOverflow: u64 = 935023952692306293;
     const EInsufficientLiquidity: u64 = 943068340693460876;
