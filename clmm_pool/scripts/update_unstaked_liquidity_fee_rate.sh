@@ -1,8 +1,8 @@
 source ./export.sh
 
-export POOL=0xe986dda6a6cecf3e132c9e31f6faf98aa1902eed7dfebc71c88112ccaaf37d93
-export COIN_A=0xe69a16dd83717f6f224314157af7b75283a297a61a1e5f20f373ecb9f8904a63::token_c::TOKEN_C
-export COIN_B=0xda1f9eaf3d10cd6fa609d3061ac48d640c0aeb36fb031125a263736a0ae0be29::token_b::TOKEN_B
+export POOL=0xc9f0c60fb486c8ba0a2599b22cad60d3223a676c60ef6ed3e559274e544f0eec
+export COIN_A=0xfae8dc6bf7b9d8713f31fcf723f57c251c42c067e7e5c4ef68c1de09652db3cf::SAIL::SAIL
+export COIN_B=0x1018b0843a724fd966b37f018bbc489918b6594144451cf4b481d392c9a0a463::token_a::TOKEN_A
 
 sui client ptb \
 --move-call $PACKAGE::pool::update_unstaked_liquidity_fee_rate "<$COIN_A,$COIN_B>" @$GLOBAL_CONFIG @$POOL 10000
