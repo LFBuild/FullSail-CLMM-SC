@@ -308,7 +308,7 @@ module clmm_pool::config {
     /// # Abort Conditions
     /// * If the package version is not 1 (error code: EPackageVersionMismatch)
     public fun checked_package_version(config: &GlobalConfig) {
-        assert!(config.package_version == 1, EPackageVersionMismatch); // TODO
+        assert!(config.package_version == 2, EPackageVersionMismatch); // TODO
     }
 
     /// Adds a new fee tier to the global configuration.

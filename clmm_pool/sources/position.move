@@ -746,6 +746,10 @@ module clmm_pool::position {
         position_info.fullsail_distribution_staked
     }
 
+    public fun is_position_staked(position_manager: &PositionManager, position_id: sui::object::ID): bool {
+        borrow_position_info(position_manager, position_id).fullsail_distribution_staked
+    }
+
     /// Returns the current liquidity of a position.
     /// 
     /// # Arguments
