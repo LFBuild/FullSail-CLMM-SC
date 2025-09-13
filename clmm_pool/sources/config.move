@@ -51,6 +51,8 @@ module clmm_pool::config {
 
     const INITIAL_PROTOCOL_FEE_RATE: u64 = 2000;
 
+    const PACKAGE_VERSION: u64 = 2;
+
     /// Capability for administrative functions in the protocol.
     /// This capability is required for managing global settings and protocol parameters.
     /// 
@@ -308,7 +310,7 @@ module clmm_pool::config {
     /// # Abort Conditions
     /// * If the package version is not 1 (error code: EPackageVersionMismatch)
     public fun checked_package_version(config: &GlobalConfig) {
-        assert!(config.package_version == 2, EPackageVersionMismatch); // TODO
+        assert!(config.package_version == PACKAGE_VERSION, EPackageVersionMismatch); // TODO
     }
 
     /// Adds a new fee tier to the global configuration.
@@ -489,7 +491,7 @@ module clmm_pool::config {
             unstaked_liquidity_fee_rate : 0, 
             fee_tiers: sui::vec_map::empty<u32, FeeTier>(),
             acl: clmm_pool::acl::new(ctx),
-            package_version: 1,
+            package_version: PACKAGE_VERSION,
         };
         let admin_cap = AdminCap { id: sui::object::new(ctx) };
         // permission without protocol fee claim
@@ -716,7 +718,7 @@ module clmm_pool::config {
             unstaked_liquidity_fee_rate: 0,
             fee_tiers: sui::vec_map::empty<u32, FeeTier>(),
             acl: clmm_pool::acl::new(ctx),
-            package_version: 1,
+            package_version: PACKAGE_VERSION,
         };
         let admin_cap = AdminCap { id: sui::object::new(ctx) };
         set_roles(&admin_cap, &mut global_config, sui::tx_context::sender(ctx), 27);

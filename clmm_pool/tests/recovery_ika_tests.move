@@ -16,10 +16,6 @@ module clmm_pool::recovery_ika_tests {
 
     /*
     state before the bug fix:
-    sqrt price: 2062269596072228240
-    tick index: -43824
-    liquidity: 13062581757983628
-    staked liquidity: 43409834894446722
     */
     #[test_only]
     fun current_tick_index(): i32::I32 {
