@@ -28,6 +28,13 @@ module integer_mate::i128 {
         }
     }
 
+    #[test_only]
+    public fun from_u128(v: u128): I128 {
+        I128 {
+            bits: v
+        }
+    }
+
     public fun neg_from(v: u128): I128 {
         assert!(v <= MIN_AS_U128, EOverflow);
         if (v == 0) {

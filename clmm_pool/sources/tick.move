@@ -95,6 +95,56 @@ module clmm_pool::tick {
         }
     }
 
+    #[test_only]
+    public fun new_test(
+        tick_spacing: u32,
+        seed: u64, 
+        tick_indexes_u32: vector<u32>,
+        tick_sqrt_prices: vector<u128>,
+        tick_liquidity_nets: vector<u128>,
+        tick_liquidity_grosses: vector<u128>,
+        tick_fee_growth_outside_as: vector<u128>,
+        tick_fee_growth_outside_bs: vector<u128>,
+        tick_points_growth_outsides: vector<u128>,
+        tick_rewards_growth_outsides: vector<vector<u128>>,
+        tick_fullsail_distribution_staked_liquidity_nets: vector<u128>,
+        tick_fullsail_distribution_growth_outsides: vector<u128>,
+        ctx: &mut sui::tx_context::TxContext
+    ): TickManager {
+        let mut ticks = move_stl::skip_list::new<Tick>(16, 2, seed, ctx);
+        let mut i = 0;
+        while (i < std::vector::length<u32>(&tick_indexes_u32)) {
+            let tick_index = integer_mate::i32::from_u32(tick_indexes_u32[i]);
+            let tick_sqrt_price = tick_sqrt_prices[i];
+            let tick_liquidity_net = integer_mate::i128::from_u128(tick_liquidity_nets[i]);
+            let tick_liquidity_gross = tick_liquidity_grosses[i];
+            let tick_fee_growth_outside_a = tick_fee_growth_outside_as[i];
+            let tick_fee_growth_outside_b = tick_fee_growth_outside_bs[i];
+            let tick_points_growth_outside = tick_points_growth_outsides[i];
+            let tick_rewards_growth_outside = tick_rewards_growth_outsides[i];
+            let tick_fullsail_distribution_staked_liquidity_net = integer_mate::i128::from_u128(tick_fullsail_distribution_staked_liquidity_nets[i]);
+            let tick_fullsail_distribution_growth_outside = tick_fullsail_distribution_growth_outsides[i];
+            let tick = Tick {
+                index: tick_index,
+                sqrt_price: tick_sqrt_price,
+                liquidity_net: tick_liquidity_net,
+                liquidity_gross: tick_liquidity_gross,
+                fee_growth_outside_a: tick_fee_growth_outside_a,
+                fee_growth_outside_b: tick_fee_growth_outside_b,
+                points_growth_outside: tick_points_growth_outside,
+                rewards_growth_outside: tick_rewards_growth_outside,
+                fullsail_distribution_staked_liquidity_net: tick_fullsail_distribution_staked_liquidity_net,
+                fullsail_distribution_growth_outside: tick_fullsail_distribution_growth_outside,
+            };
+            move_stl::skip_list::insert<Tick>(&mut ticks, tick_score(tick_index), tick);
+            i = i + 1;
+        };
+        TickManager {
+            tick_spacing,
+            ticks,
+        }
+    }
+
     /// Gets a reference to a tick by its index.
     /// 
     /// # Arguments
@@ -138,6 +188,44 @@ module clmm_pool::tick {
         };
         (move_stl::skip_list::borrow_value<Tick>(node), next_score)
     }
+
+    public(package) fun cross_by_swap_liqudity(
+        tick: &Tick,
+        is_a2b: bool,
+        current_liquidity: u128,
+        staked_liquidity: u128,
+    ): (u128, u128) {
+        let (liquidity_delta, staked_liquidity_delta) = if (is_a2b) {
+            (
+                integer_mate::i128::neg(tick.liquidity_net), 
+                integer_mate::i128::neg(tick.fullsail_distribution_staked_liquidity_net)
+            )
+        } else {
+            (
+                tick.liquidity_net,
+                tick.fullsail_distribution_staked_liquidity_net
+            )
+        };
+        let new_liquidity = if (!integer_mate::i128::is_neg(liquidity_delta)) {
+            let liquidity_abs = integer_mate::i128::abs_u128(liquidity_delta);
+            assert!(integer_mate::math_u128::add_check(liquidity_abs, current_liquidity), EInsufficientLiquidity);
+            current_liquidity + liquidity_abs
+        } else {
+            let liquidity_abs = integer_mate::i128::abs_u128(liquidity_delta);
+            assert!(current_liquidity >= liquidity_abs, EInsufficientLiquidity);
+            current_liquidity - liquidity_abs
+        };
+        let new_staked_liquidity = if (!integer_mate::i128::is_neg(staked_liquidity_delta)) {
+            let staked_abs = integer_mate::i128::abs_u128(staked_liquidity_delta);
+            assert!(integer_mate::math_u128::add_check(staked_abs, staked_liquidity), EInsufficientLiquidity);
+            staked_liquidity + staked_abs
+        } else {
+            let staked_abs = integer_mate::i128::abs_u128(staked_liquidity_delta);
+            assert!(staked_liquidity >= staked_abs, EInsufficientStakedLiquidity);
+            staked_liquidity - staked_abs
+        };
+        (new_liquidity, new_staked_liquidity)
+    }
     
     /// Handles crossing a tick during a swap operation.
     /// Updates liquidity, fees, rewards, and points when crossing a tick boundary.
@@ -176,26 +264,8 @@ module clmm_pool::tick {
         fullsail_growth_global: u128
     ): (u128, u128) {
         let tick = move_stl::skip_list::borrow_mut<Tick>(&mut tick_manager.ticks, tick_score(tick_index));
-        let (liquidity_delta, staked_liquidity_delta) = if (is_a2b) {
-            (integer_mate::i128::neg(tick.liquidity_net), integer_mate::i128::neg(
-                tick.fullsail_distribution_staked_liquidity_net
-            ))
-        } else {
-            (tick.liquidity_net, tick.fullsail_distribution_staked_liquidity_net)
-        };
-        let (new_liquidity, new_staked_liquidity) = if (!integer_mate::i128::is_neg(liquidity_delta)) {
-            let liquidity_abs = integer_mate::i128::abs_u128(liquidity_delta);
-            assert!(integer_mate::math_u128::add_check(liquidity_abs, current_liquidity), EInsufficientLiquidity);
-            let staked_abs = integer_mate::i128::abs_u128(staked_liquidity_delta);
-            assert!(integer_mate::math_u128::add_check(staked_abs, staked_liquidity), EInsufficientLiquidity);
-            (current_liquidity + liquidity_abs, staked_liquidity + staked_abs)
-        } else {
-            let liquidity_abs = integer_mate::i128::abs_u128(liquidity_delta);
-            assert!(current_liquidity >= liquidity_abs, EInsufficientLiquidity);
-            let staked_abs = integer_mate::i128::abs_u128(staked_liquidity_delta);
-            assert!(staked_liquidity >= staked_abs, EInsufficientStakedLiquidity);
-            (current_liquidity - liquidity_abs, staked_liquidity - staked_abs)
-        };
+        let (new_liquidity, new_staked_liquidity) = cross_by_swap_liqudity(tick, is_a2b, current_liquidity, staked_liquidity);
+
         tick.fee_growth_outside_a = integer_mate::math_u128::wrapping_sub(fee_growth_global_a, tick.fee_growth_outside_a);
         tick.fee_growth_outside_b = integer_mate::math_u128::wrapping_sub(fee_growth_global_b, tick.fee_growth_outside_b);
         let mut i = 0;
@@ -214,6 +284,7 @@ module clmm_pool::tick {
             fullsail_growth_global,
             tick.fullsail_distribution_growth_outside
         );
+
         (new_liquidity, new_staked_liquidity)
     }
     
@@ -370,7 +441,8 @@ module clmm_pool::tick {
     public fun fetch_ticks(
         tick_manager: &TickManager, 
         pre_start_tick_index: Option<u32>, 
-        limit: u64): vector<Tick> {
+        limit: u64
+    ): vector<Tick> {
         let mut result = std::vector::empty<Tick>();
         let next_score = if (std::option::is_none<u32>(&pre_start_tick_index)) {
             move_stl::skip_list::head<Tick>(&tick_manager.ticks)
@@ -392,6 +464,39 @@ module clmm_pool::tick {
         };
         
         result
+    }
+
+    // Method to calculate the current liqudity without using pool.liquidity and pool.fullsail_distribution_staked_liquidity.
+    // Supposed to be used to recover liquidity and staked liquidity values.
+    public fun calc_current_liquidity(
+        tick_manager: &TickManager,
+        current_tick_index: integer_mate::i32::I32,
+    ): (u128, u128) {
+        let mut current_liquidity = 0;
+        let mut current_staked_liquidity = 0;
+        let mut current_score = move_stl::skip_list::head<Tick>(&tick_manager.ticks);
+        // we are iterationg from the lowest tick the highest tick which correspondt to the b -> a swap direction
+        let is_a2b = false;
+
+        while (move_stl::option_u64::is_some(&current_score)) {
+            let node = move_stl::skip_list::borrow_node<Tick>(&tick_manager.ticks, move_stl::option_u64::borrow(&current_score));
+            let tick = node.borrow_value();
+            if (integer_mate::i32::gt(tick.index, current_tick_index)) { 
+                // stop when [prevtick.index, tick.index) is an active range.
+                break
+            };
+            let (next_liqudity, next_staked_liquidity) = cross_by_swap_liqudity(
+                node.borrow_value(),
+                is_a2b,
+                current_liquidity,
+                current_staked_liquidity
+            );
+            current_liquidity = next_liqudity;
+            current_staked_liquidity = next_staked_liquidity;
+            current_score = move_stl::skip_list::next_score<Tick>(node);
+        };
+
+        (current_liquidity, current_staked_liquidity)
     }
 
     /// Gets the first score for swap operations based on direction.

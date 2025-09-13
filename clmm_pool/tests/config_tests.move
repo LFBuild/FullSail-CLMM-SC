@@ -234,7 +234,7 @@ module clmm_pool::config_tests {
         {
             let admin_cap = scenario.take_from_sender<config::AdminCap>();
             let mut global_config = scenario.take_shared<config::GlobalConfig>();
-            config::update_package_version(&admin_cap, &mut global_config, 2);
+            config::update_package_version(&admin_cap, &mut global_config, 3);
             test_scenario::return_shared(global_config);
             transfer::public_transfer(admin_cap, admin);
         };
@@ -332,7 +332,7 @@ module clmm_pool::config_tests {
         {
             let admin_cap = test_scenario::take_from_sender<config::AdminCap>(&scenario);
             let mut global_config = test_scenario::take_shared<config::GlobalConfig>(&scenario);
-            config::update_package_version(&admin_cap, &mut global_config, 2);
+            config::update_package_version(&admin_cap, &mut global_config, 3);
             test_scenario::return_shared(global_config);
             transfer::public_transfer(admin_cap, admin);
         };
