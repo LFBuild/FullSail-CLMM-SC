@@ -127,6 +127,7 @@ module clmm_pool::factory_tests {
             
             // Verify pool was created and shared
             assert!(sui::object::id(&pool) != sui::object::id(&pools), 1);
+            assert!(factory::index(&pools) == 2, 2);
             
             // Return objects to scenario
             transfer::public_transfer(pool, admin);
@@ -182,6 +183,9 @@ module clmm_pool::factory_tests {
             
             // Verify pool was created
             assert!(sui::object::id(&pool) != sui::object::id(&pools), 1);
+
+            // verify tick spacing
+            assert!(pool.tick_spacing() == 1, 2);
 
             // Return objects to scenario
             transfer::public_transfer(pool, admin);

@@ -506,11 +506,7 @@ module clmm_pool::partner {
 
     #[test_only]
     public fun test_init(ctx: &mut sui::tx_context::TxContext) {
-        let partners = Partners {
-            id: sui::object::new(ctx),
-            partners: sui::vec_map::empty<std::string::String, sui::object::ID>(),
-        };
-        sui::transfer::share_object(partners);
+        init(ctx)
     }
 
     #[test]

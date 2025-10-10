@@ -9,11 +9,6 @@ module clmm_pool::recovery_usdz_tests {
     use clmm_pool::tick;
     use sui::test_utils;
 
-    #[test_only]
-    public struct TestCoinA has drop, store {}
-    #[test_only]
-    public struct TestCoinB has drop, store {}
-
     /*
     state before the bug fix:
     */

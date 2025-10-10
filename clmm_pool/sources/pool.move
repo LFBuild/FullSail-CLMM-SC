@@ -4048,10 +4048,7 @@ module clmm_pool::pool {
 
     #[test_only]
     public fun test_init(pool: POOL, ctx: &mut sui::tx_context::TxContext) {
-        sui::transfer::public_transfer<sui::package::Publisher>(
-            sui::package::claim<POOL>(pool, ctx),
-            sui::tx_context::sender(ctx)
-        );
+        init(pool, ctx);
     }
 
     #[test_only]
@@ -4085,25 +4082,6 @@ module clmm_pool::pool {
         clock: &sui::clock::Clock
     ): SwapResult {
         swap_in_pool(pool, a2b, by_amount_in, sqrt_price_limit, amount, unstaked_fee_rate, protocol_fee_rate, ref_fee_rate, clock)
-    }
-
-    #[test_only]
-    public fun update_fullsail_distribution_growth_global_internal_test<CoinTypeA, CoinTypeB>(
-        pool: &mut Pool<CoinTypeA, CoinTypeB>,
-        clock: &sui::clock::Clock
-    ): u64 {
-        update_fullsail_distribution_growth_global_internal(pool, clock)
-    }
-
-    #[test_only]
-    public fun update_fullsail_distribution_internal_test<CoinTypeA, CoinTypeB>(
-        pool: &mut Pool<CoinTypeA, CoinTypeB>,
-        liquidity_delta: integer_mate::i128::I128,
-        tick_lower: integer_mate::i32::I32,
-        tick_upper: integer_mate::i32::I32,
-        clock: &sui::clock::Clock
-    ) {
-        update_fullsail_distribution_internal(pool, liquidity_delta, tick_lower, tick_upper, clock)
     }
     
     #[test_only]

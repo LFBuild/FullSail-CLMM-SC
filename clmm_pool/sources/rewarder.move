@@ -580,12 +580,7 @@ module clmm_pool::rewarder {
 
     #[test_only]
     public fun test_init(ctx: &mut sui::tx_context::TxContext) {
-        let vault = RewarderGlobalVault {
-            id: sui::object::new(ctx),
-            balances: sui::bag::new(ctx),
-            available_balance: sui::table::new(ctx),
-        };
-        sui::transfer::share_object(vault);
+        init(ctx);
     }
 
     #[test]

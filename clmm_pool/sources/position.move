@@ -1577,33 +1577,7 @@ module clmm_pool::position {
     /// Test initialization of the position system
     /// Replicates the init function logic for testing purposes
     public fun test_init(ctx: &mut sui::tx_context::TxContext) {
-        
-        let publisher = sui::package::claim<POSITION>(POSITION{}, ctx);
-
-        let display = update_display(
-            &publisher,
-            std::string::utf8(b"{name}"),
-            std::string::utf8(b"{coin_type_a}"),
-            std::string::utf8(b"{coin_type_b}"),
-            std::string::utf8(b"https://app.fullsailfinance.io/position?chain=sui&id={id}"),
-            std::string::utf8(b"{url}"),
-            std::string::utf8(b"{description}"),
-            std::string::utf8(b"https://fullsailfinance.io"),
-            std::string::utf8(b"FULLSAIL"),
-            ctx
-        );
-
-        sui::transfer::public_transfer<sui::display::Display<Position>>(display, sui::tx_context::sender(ctx));
-        sui::transfer::public_transfer<sui::package::Publisher>(publisher, sui::tx_context::sender(ctx));
-    }
-
-    #[test_only]
-    /// Creates a new PositionReward for testing purposes
-    public fun new_position_reward(growth_inside: u128, amount_owned: u64): PositionReward {
-        PositionReward {
-            growth_inside,
-            amount_owned,
-        }
+        init(POSITION{}, ctx);
     }
 
     #[test_only]

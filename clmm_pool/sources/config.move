@@ -712,18 +712,7 @@ module clmm_pool::config {
 
     #[test_only]
     public fun test_init(ctx: &mut sui::tx_context::TxContext) {
-        let mut global_config = GlobalConfig {
-            id: sui::object::new(ctx),
-            protocol_fee_rate: INITIAL_PROTOCOL_FEE_RATE,
-            unstaked_liquidity_fee_rate: 0,
-            fee_tiers: sui::vec_map::empty<u32, FeeTier>(),
-            acl: clmm_pool::acl::new(ctx),
-            package_version: PACKAGE_VERSION,
-        };
-        let admin_cap = AdminCap { id: sui::object::new(ctx) };
-        set_roles(&admin_cap, &mut global_config, sui::tx_context::sender(ctx), 27);
-        sui::transfer::share_object(global_config);
-        sui::transfer::transfer(admin_cap, sui::tx_context::sender(ctx));
+        init(ctx);
     }
 
     #[test]

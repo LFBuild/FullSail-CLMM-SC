@@ -580,38 +580,7 @@ module clmm_pool::factory {
     /// Test initialization of the position system
     /// Replicates the init function logic for testing purposes
     public fun test_init(ctx: &mut sui::tx_context::TxContext) {
-        let pools = Pools {
-            id: sui::object::new(ctx),
-            list: move_stl::linked_table::new<sui::object::ID, PoolSimpleInfo>(ctx),
-            index: 0,
-        };
-
-        sui::transfer::share_object<Pools>(pools);
-        sui::package::claim_and_keep<FACTORY>(FACTORY { dummy_field: false }, ctx);
-    }
-
-    #[test_only]
-    fun test_init_fun() {
-        let admin = @0x123;
-        let mut scenario = sui::test_scenario::begin(admin);
-        {
-            init(FACTORY { dummy_field: false }, scenario.ctx());
-        };
-
-        scenario.next_tx(admin);
-        {
-            let pools = scenario.take_from_sender<Pools>();
-            let publisher = scenario.take_from_sender<sui::package::Publisher>();
-            
-            assert!(sui::object::id(&pools) != sui::object::id(&publisher), EPoolAlreadyExists);
-            assert!(move_stl::linked_table::is_empty(&pools.list), EInvalidSqrtPrice);
-            assert!(pools.index == 0, ESameCoinTypes);
-            
-            scenario.return_to_sender(pools);
-            scenario.return_to_sender(publisher);
-        };
-
-        scenario.end();
+        init(FACTORY { dummy_field: false }, ctx);
     }
 
     #[test_only]

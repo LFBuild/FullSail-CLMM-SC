@@ -101,10 +101,6 @@ module clmm_pool::stats {
 
     #[test_only]
     public fun init_test(ctx: &mut TxContext) {
-        let stats = Stats {
-            id: object::new(ctx),
-            total_volume: 0,
-        };
-        transfer::share_object<Stats>(stats);
+        init(ctx);
     }
 }
