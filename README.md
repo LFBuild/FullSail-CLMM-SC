@@ -37,25 +37,21 @@ You can use Full Sail via https://www.moveregistry.com/
 mvr add @pkg/fullsail-clmm
 ```
 
-## Mainnet deployments
+## Mainnet test deployments
 
 - [move_stl](https://suivision.xyz/txblock/EUHqf4MGpxRjDodcW2TFq7EUDqRBcV8gsFgQARvE8zQF) 
     - package: `0x2d8a7d4c585f1c20758f9b2c500477e1be35e178e79efb6ddf9d14a0dceff211`
 - [integer_mate](https://suivision.xyz/txblock/CWQ5cMDkAGu6o8nCWDix25KGpnBXRLt2bZdVchacjRVN) 
     - package: `0x6b904ae739b2baad330aae14991abcd3b7354d3dc3db72507ed8dabeeb7a36de`
-- [gauge_cap](https://suivision.xyz/txblock/EzgXx1xJNBMS6krkPWJxfgx6KpT4oPh4Y8zydVWVTJ34)
-    - package: `0xfc5ce91b953f03c30e3e48ac1d2a7706d66697c25979aeb978f9fff3fbcde5b2`
-- [price_provider](https://suivision.xyz/txblock/BP8hsrBNWZPc5tb29XZQzdc7gGPP1gBYyZUbZPUa6LJG?tab=Overview)
-    - package: `0xb49be008cf304b1dae7e7ece661b5f1b0e15324bc1422ec8c73b10eb4a6dcb19`
-    - PriceProvider: `0x854b2d2c0381bb656ec962f8b443eb082654384cf97885359d1956c7d76e33c9`
-- [clmm_pool](https://suivision.xyz/txblock/4HVyzZWudh3LZSWZawyN3ZPgqotKiZ7fzbC5cycuT1AB)
-    - original package: `0xe74104c66dd9f16b3096db2cc00300e556aa92edc871be4bc052b5dfb80db239`
-    - Pools: `0x0efb954710df6648d090bdfa4a5e274843212d6eb3efe157ee465300086e3650`
-    - RewarderGlobalVault `0xfb971d3a2fb98bde74e1c30ba15a3d8bef60a02789e59ae0b91660aeed3e64e1`
-    - GlobalConfig `0xe93baa80cb570b3a494cbf0621b2ba96bc993926d34dc92508c9446f9a05d615`
-    - Stats `0x6822a33d1d971e040c32f7cc74507010d1fe786f7d06ab89135083ddb07d2dc2`
-    - Partners `0xd8bf42d4ab51ca7c938b44e0a83db4c1abe151ad36bb18e6934dce6ed299cbfd`
-- [clmm_pool upgrade 1](https://suivision.xyz/txblock/7VdktfjzNjNF4AoKnTNpLACNECz2m8NXvNX3wHLhncnf)
-    - latest package `0xecd737da1a3bdc7826dfda093bda6032f380b0e45265166c10b8041b125980b9`
-- [clmm_pool upgrade 2](https://suivision.xyz/txblock/837varhLRgrdhNPYrBJ6YERBjo8RMGvDBMbbrhnHfWvF)
-    - latest package `0xf7ca99f9fd82da76083a52ab56d88aff15d039b76499b85db8b8bc4d4804584a`
+- [gauge_cap](https://suivision.xyz/txblock/GvCKoRnkC33NCPpuiDkpPGLLMzcbvw2ne7sWbUNqTqvJ)
+    - package: `0xc543ef4485b43149ff6a4f3e8df3a0e9d7ea73ea25381b2948c8a6c3efc62672`
+- [price_provider](https://suivision.xyz/txblock/BWoFFHTXyKHYprCJUMadTuf41ETM7TWv6qGBkYzXAZyc)
+    - package: `0x8efc19386b334f035ceaa121b84f331b295b947cd8c601aa37faa36ed0f7466b`
+    - PriceProvider: `0x5654459f1754e16420c5a49639225e9b8295f6623fd484426378b75d4eb0169b`
+- [clmm_pool](https://suivision.xyz/txblock/7DZ9HBQbzthrMoyRz47Jd8G6frQx94evW63o1fZYe8HE)
+    - original package: `0x8c9b843944257991e5f813039d9fb70e0358ae2ff28b2bfdf2624dd6d8251bb3`
+    - Pools: `0xf7c195f31e5659f830e42d0e467c5235ad0cf32c85cab27ace5d60a443795592`
+    - RewarderGlobalVault `0x5d50fbada683f54ae6f2b98659522d0f2c6deb3eb11a4998434c40cc45d2eda9`
+    - GlobalConfig `0x43b1eb08db4a1dfce2c6ca4e4710f56975fd06eb861091aa5ff984f88a39302a`
+    - Stats `0xf350b6b218c44a7ccd8f6489f26d7e637dec55946f8d49e85d327e8188db1872`
+    - Partners `0x1e21b34fd9d1b76af72de919cddbed2edcb12c0f47399ad2225fbaa01e266788`

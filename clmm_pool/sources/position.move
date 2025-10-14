@@ -692,10 +692,10 @@ module clmm_pool::position {
             std::string::utf8(b"{name}"),
             std::string::utf8(b"{coin_type_a}"),
             std::string::utf8(b"{coin_type_b}"),
-            std::string::utf8(b"https://app.fullsailfinance.io/position?chain=sui&id={id}"),
-            std::string::utf8(b"{url}"),
+            std::string::utf8(b"https://app.fullsail.finance/liquidity/{pool}/positions/{id}"),
+            std::string::utf8(b"https://app.fullsail.finance/static_files/position.png"),
             std::string::utf8(b"{description}"),
-            std::string::utf8(b"https://fullsailfinance.io"),
+            std::string::utf8(b"https://fullsail.finance"),
             std::string::utf8(b"FULLSAIL"),
             ctx
         );
