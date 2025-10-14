@@ -1,3 +1,7 @@
+/// © 2025 Metabyte Labs, Inc.  All Rights Reserved.
+/// U.S. Patent Application No. 63/861,982. The technology described herein is the subject of a pending U.S. patent application.
+/// Full Sail has added a license to its Full Sail protocol code. You can view the terms of the license at [ULR](LICENSE/250825_Metabyte_Negotiated_Services_Agreement21634227_2_002.docx).
+
 /// The pool module serves as the core component of the CLMM (Concentrated Liquidity Market Maker) system.
 /// It manages liquidity pools, handles swaps, and coordinates various aspects of the DEX including
 /// fee collection, reward distribution, and position management.
@@ -18,6 +22,10 @@
 /// infrastructure for fee collection and reward distribution to liquidity providers.
 
 module clmm_pool::pool {
+    #[allow(unused_const)]
+    const COPYRIGHT_NOTICE: vector<u8> = b"© 2025 Metabyte Labs, Inc.  All Rights Reserved.";
+    #[allow(unused_const)]
+    const PATENT_NOTICE: vector<u8> = b"Patent pending - U.S. Patent Application No. 63/861,982";
 
     const Q64: u128 = 18446744073709551616;
 
@@ -27,6 +35,7 @@ module clmm_pool::pool {
     const ENotOwner: u64 = 9843325239567326443;
     const EZeroLiquidity: u64 = 932860927360234786;
     const EInsufficientAmount: u64 = 923946802368230946;
+    const EPositionIsStaked: u64 = 894506706118488600;
     const EAmountInOverflow: u64 = 928346890236709234;
     const EAmountOutOverflow: u64 = 932847098437837467;
     const EFeeAmountOverflow: u64 = 986092346024366377;
@@ -51,6 +60,9 @@ module clmm_pool::pool {
     const EPoolAlreadyPaused: u64 = 922337673984396492;
     const EInsufficientStakedLiquidity: u64 = 922337902476656639;
     const EInvalidSyncFullsailDistributionTime: u64 = 932630496306302321;
+    const EUnstakePositionNotStaked: u64 = 169617512974258300;
+    const EStakePositionAlreadyStaked: u64 = 272018139339630820;
+    const ELiquidityMismatch: u64 = 20546486390749852;
 
     public struct POOL has drop {}
 
@@ -538,6 +550,13 @@ module clmm_pool::pool {
         staked_liquidity: u128,
     }
 
+    public struct RestoreStakedLiquidityEvent has copy, drop, store {
+        pool_id: sui::object::ID,
+        staked_liquidity_before: u128,
+        staked_liquidity_after: u128,
+        liquidity: u128,
+    }
+
     /// Creates a new liquidity pool with the specified parameters.
     /// This function initializes all the necessary components of a pool including
     /// tick management, reward distribution, and position tracking.
@@ -959,6 +978,8 @@ module clmm_pool::pool {
     ): AddLiquidityReceipt<CoinTypeA, CoinTypeB> {
         assert!(!pool.is_pause, EPoolPaused);
         validate_pool_position<CoinTypeA, CoinTypeB>(pool, position);
+        let position_id = sui::object::id(position);
+        assert!(!clmm_pool::position::is_position_staked(&pool.position_manager, position_id), EPositionIsStaked);
         clmm_pool::rewarder::settle(vault, &mut pool.rewarder_manager, pool.liquidity, timestamp);
 
         let (tick_lower, tick_upper) = clmm_pool::position::tick_range(position);
@@ -2925,6 +2946,8 @@ module clmm_pool::pool {
         assert!(!pool.is_pause, EPoolPaused);
         assert!(liquidity > 0, EZeroLiquidity);
         validate_pool_position<CoinTypeA, CoinTypeB>(pool, position);
+        let position_id = sui::object::id(position);
+        assert!(!clmm_pool::position::is_position_staked(&pool.position_manager, position_id), EPositionIsStaked);
         
         clmm_pool::rewarder::settle(
             vault,
@@ -2976,7 +2999,7 @@ module clmm_pool::pool {
 
         let event = RemoveLiquidityEvent {
             pool: sui::object::id<Pool<CoinTypeA, CoinTypeB>>(pool),
-            position: sui::object::id<clmm_pool::position::Position>(position),
+            position: position_id,
             tick_lower,
             tick_upper,
             liquidity,
@@ -3247,6 +3270,7 @@ module clmm_pool::pool {
 
         let position_id = sui::object::id<clmm_pool::position::Position>(position);
         clmm_pool::position::validate_position_exists(&pool.position_manager, position_id);
+        assert!(!clmm_pool::position::is_position_staked(&pool.position_manager, position_id), EStakePositionAlreadyStaked);
 
         let (tick_lower, tick_upper) = position.tick_range();
         update_fullsail_distribution_internal<CoinTypeA, CoinTypeB>(
@@ -3637,6 +3661,7 @@ module clmm_pool::pool {
         check_gauge_cap<CoinTypeA, CoinTypeB>(pool, gauge_cap);
         let position_id = sui::object::id<clmm_pool::position::Position>(position);
         clmm_pool::position::validate_position_exists(&pool.position_manager, position_id);
+        assert!(clmm_pool::position::is_position_staked(&pool.position_manager, position_id), EUnstakePositionNotStaked);
 
         let liquidity = position.liquidity();
         if (liquidity > 0) {
@@ -3996,12 +4021,34 @@ module clmm_pool::pool {
         assert!(sui::object::id<Pool<CoinTypeA, CoinTypeB>>(pool) == clmm_pool::position::pool_id(position), EPositionPoolIdMismatch);
     }
 
+    /// Method that is supposed to be used to set correct fullsail distribution staked liquidity value into the pool.
+    /// Used to restore the correct liqudity amount after the bug fix.
+    public fun restore_fullsail_distribution_staked_liquidity<CoinTypeA, CoinTypeB>(
+        pool: &mut Pool<CoinTypeA, CoinTypeB>,
+        global_config: &clmm_pool::config::GlobalConfig,
+        ctx: &mut sui::tx_context::TxContext
+    ) {
+        clmm_pool::config::checked_package_version(global_config);
+        clmm_pool::config::check_pool_manager_role(global_config, sui::tx_context::sender(ctx));
+
+        let (liqudity, staked_liquidity) = clmm_pool::tick::calc_current_liquidity(&pool.tick_manager, pool.current_tick_index);
+
+        assert!(liqudity == pool.liquidity, ELiquidityMismatch);
+        let event = RestoreStakedLiquidityEvent {
+            pool_id: sui::object::id(pool),
+            staked_liquidity_before: pool.fullsail_distribution_staked_liquidity,
+            staked_liquidity_after: staked_liquidity,
+            liquidity: pool.liquidity,
+        };
+        sui::event::emit<RestoreStakedLiquidityEvent>(event);
+
+        pool.fullsail_distribution_staked_liquidity = staked_liquidity;
+    }
+        
+
     #[test_only]
     public fun test_init(pool: POOL, ctx: &mut sui::tx_context::TxContext) {
-        sui::transfer::public_transfer<sui::package::Publisher>(
-            sui::package::claim<POOL>(pool, ctx),
-            sui::tx_context::sender(ctx)
-        );
+        init(pool, ctx);
     }
 
     #[test_only]
@@ -4035,25 +4082,6 @@ module clmm_pool::pool {
         clock: &sui::clock::Clock
     ): SwapResult {
         swap_in_pool(pool, a2b, by_amount_in, sqrt_price_limit, amount, unstaked_fee_rate, protocol_fee_rate, ref_fee_rate, clock)
-    }
-
-    #[test_only]
-    public fun update_fullsail_distribution_growth_global_internal_test<CoinTypeA, CoinTypeB>(
-        pool: &mut Pool<CoinTypeA, CoinTypeB>,
-        clock: &sui::clock::Clock
-    ): u64 {
-        update_fullsail_distribution_growth_global_internal(pool, clock)
-    }
-
-    #[test_only]
-    public fun update_fullsail_distribution_internal_test<CoinTypeA, CoinTypeB>(
-        pool: &mut Pool<CoinTypeA, CoinTypeB>,
-        liquidity_delta: integer_mate::i128::I128,
-        tick_lower: integer_mate::i32::I32,
-        tick_upper: integer_mate::i32::I32,
-        clock: &sui::clock::Clock
-    ) {
-        update_fullsail_distribution_internal(pool, liquidity_delta, tick_lower, tick_upper, clock)
     }
     
     #[test_only]

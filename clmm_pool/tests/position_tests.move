@@ -1,5 +1,14 @@
+/// © 2025 Metabyte Labs, Inc.  All Rights Reserved.
+/// U.S. Patent Application No. 63/861,982. The technology described herein is the subject of a pending U.S. patent application.
+/// Full Sail has added a license to its Full Sail protocol code. You can view the terms of the license at [ULR](LICENSE/250825_Metabyte_Negotiated_Services_Agreement21634227_2_002.docx).
+
 #[test_only]
 module clmm_pool::position_tests {
+    #[allow(unused_const)]
+    const COPYRIGHT_NOTICE: vector<u8> = b"© 2025 Metabyte Labs, Inc.  All Rights Reserved.";
+    #[allow(unused_const)]
+    const PATENT_NOTICE: vector<u8> = b"Patent pending - U.S. Patent Application No. 63/861,982";
+
     use sui::test_scenario::{Self};
     use clmm_pool::position::{
         Self,
@@ -85,6 +94,8 @@ module clmm_pool::position_tests {
         // Verify position properties
         assert!(position::pool_id(&position) == pool_id, 1);
         assert!(position::index(&position) == 1, 2);
+
+        position::validate_position_exists(&test_manager.position_manager, object::id(&position));
         
         let (pos_tick_lower, pos_tick_upper) = position::tick_range(&position);
         assert!(i32::eq(pos_tick_lower, tick_lower), 3);
@@ -116,6 +127,23 @@ module clmm_pool::position_tests {
 
         // Transfer objects
         transfer::public_transfer(position, admin);
+        transfer::public_transfer(test_manager, admin);
+        test_scenario::end(scenario);
+    }
+
+    #[test]
+    #[expected_failure(abort_code = 923070870234869348)]
+    fun test_validate_position_exists_not_found() {
+        let mut scenario = test_scenario::begin(@0x1);
+        let admin = @0x1;
+        scenario.next_tx(admin);
+        let test_manager = TestPositionManager {
+            id: sui::object::new(scenario.ctx()),
+            position_manager: position::new(1, scenario.ctx())
+        };
+        
+        position::validate_position_exists(&test_manager.position_manager, object::id_from_address(@0x234));
+        
         transfer::public_transfer(test_manager, admin);
         test_scenario::end(scenario);
     }
@@ -1784,6 +1812,7 @@ module clmm_pool::position_tests {
         
         // Verify fullsail distribution is initialized
         assert!(!position::is_staked(position_info), 13);
+        assert!(!position::is_position_staked(&test_manager.position_manager, position_id), 15);
         assert!(position::info_fullsail_distribution_owned(position_info) == 0, 14);
 
         // Transfer objects
@@ -2467,6 +2496,7 @@ module clmm_pool::position_tests {
         assert!(std::vector::length(rewards) == 1, 1);
         let reward = std::vector::borrow(rewards, 0);
         assert!(position::reward_amount_owned(reward) == 0, 2);
+        assert!(position::reward_growth_inside(reward) == 100, 3);
 
         transfer::public_transfer(test_manager, admin);
         
@@ -3018,6 +3048,136 @@ module clmm_pool::position_tests {
 
             let image_url_field = sui::vec_map::get(display_fields, &std::string::utf8(b"image_url"));
             assert!(std::string::utf8(b"{url}") == *image_url_field, 8);
+
+            // Return objects to scenario
+            scenario.return_to_sender(display);
+        };
+
+        scenario.end();
+    }
+    #[test]
+    /// Test setting display fields for a position
+    /// Verifies that:
+    /// 1. Display fields are set correctly
+    /// 2. Custom values are applied
+    fun test_set_display_v2() {
+        let admin = @0x123;
+        let mut scenario = test_scenario::begin(admin);
+        {
+            clmm_pool::config::test_init(scenario.ctx());
+            position::test_init(scenario.ctx());
+        };
+
+        // Create partner
+        scenario.next_tx(admin);
+        {
+            let global_config = scenario.take_shared<clmm_pool::config::GlobalConfig>();            
+            // Create position manager
+            let mut test_manager = TestPositionManager {
+                id: sui::object::new(scenario.ctx()),
+                position_manager: new(1, scenario.ctx())
+            };
+            
+            // Create a pool ID for testing
+            let pool_id = sui::object::id_from_address(admin);
+            let pool_index = 1;
+            let pool_url = std::string::utf8(b"https://fullsailfinance.io/pool/1");
+            
+            // Define tick range
+            let tick_lower = integer_mate::i32::from(0);
+            let tick_upper = integer_mate::i32::from(10);
+            
+            // Open a new position
+            let position = open_position<std::type_name::TypeName, std::type_name::TypeName>(
+                &mut test_manager.position_manager,
+                pool_id,
+                pool_index,
+                pool_url,
+                tick_lower,
+                tick_upper,
+                scenario.ctx()
+            );
+
+            // Set custom display values
+            let custom_description = std::string::utf8(b"Custom position description");
+            let custom_link = std::string::utf8(b"https://app.fullsailfinance.io/custom-position");
+            let custom_image_url = std::string::utf8(b"https://custom-image.io");
+            let custom_project_url = std::string::utf8(b"https://custom-project.io");
+            let custom_creator = std::string::utf8(b"Custom Creator");
+
+            // Get publisher from scenario
+            let publisher = scenario.take_from_sender<sui::package::Publisher>();
+
+            // Set display fields
+            position::set_display_v2(
+                &global_config,
+                &publisher,
+                custom_description,
+                custom_link,
+                custom_image_url,
+                custom_project_url,
+                custom_creator,
+                scenario.ctx()
+            );
+
+            scenario.return_to_sender(publisher);
+            sui::transfer::public_transfer(position, admin);
+            sui::transfer::public_transfer(test_manager, admin);
+            test_scenario::return_shared(global_config);
+        };
+
+
+        scenario.next_tx(admin);
+        {
+            // Get display object
+            let display = scenario.take_from_sender<sui::display::Display<Position>>();
+
+            // Verify display fields
+            let display_fields = sui::display::fields(&display);
+
+            let keys = sui::vec_map::keys(display_fields);
+            let mut i = 0;
+            while (i < vector::length(&keys)) {
+                let key = vector::borrow(&keys, i);
+                let value = sui::vec_map::get(display_fields, key);
+                i = i + 1;
+            };
+
+            let custom_description = std::string::utf8(b"Custom position description");
+            let custom_link = std::string::utf8(b"https://app.fullsailfinance.io/custom-position");
+            let custom_image_url = std::string::utf8(b"https://custom-image.io");
+            let custom_project_url = std::string::utf8(b"https://custom-project.io");
+            let custom_creator = std::string::utf8(b"Custom Creator");
+            
+            // Verify custom values were set correctly
+            let description_field = sui::vec_map::get(display_fields, &std::string::utf8(b"description"));
+            
+            assert!(custom_description == *description_field, 1);
+
+            let link_field = sui::vec_map::get(display_fields, &std::string::utf8(b"link"));
+            
+            assert!(custom_link == *link_field, 2);
+
+            let project_url_field = sui::vec_map::get(display_fields, &std::string::utf8(b"project_url"));
+            
+            assert!(custom_project_url == *project_url_field, 3);
+
+            let creator_field = sui::vec_map::get(display_fields, &std::string::utf8(b"creator"));
+            
+            assert!(custom_creator == *creator_field, 4);
+
+            // Verify template values are preserved
+            let name_field = sui::vec_map::get(display_fields, &std::string::utf8(b"name"));
+            assert!(std::string::utf8(b"{name}") == *name_field, 5);
+
+            let coin_a_field = sui::vec_map::get(display_fields, &std::string::utf8(b"coin_a"));
+            assert!(std::string::utf8(b"{coin_type_a}") == *coin_a_field, 6);
+
+            let coin_b_field = sui::vec_map::get(display_fields, &std::string::utf8(b"coin_b"));
+            assert!(std::string::utf8(b"{coin_type_b}") == *coin_b_field, 7);
+
+            let image_url_field = sui::vec_map::get(display_fields, &std::string::utf8(b"image_url"));
+            assert!(custom_image_url == *image_url_field, 8);
 
             // Return objects to scenario
             scenario.return_to_sender(display);

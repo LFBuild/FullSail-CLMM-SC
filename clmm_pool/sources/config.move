@@ -1,3 +1,7 @@
+/// © 2025 Metabyte Labs, Inc.  All Rights Reserved.
+/// U.S. Patent Application No. 63/861,982. The technology described herein is the subject of a pending U.S. patent application.
+/// Full Sail has added a license to its Full Sail protocol code. You can view the terms of the license at [ULR](LICENSE/250825_Metabyte_Negotiated_Services_Agreement21634227_2_002.docx).
+
 /// Configuration module for the CLMM (Concentrated Liquidity Market Maker) pool system.
 /// This module provides core configuration structures and functions for:
 /// * Managing global pool settings
@@ -22,6 +26,10 @@
 /// * Emergency Manager - Can pause/unpause pools in emergency situations
 /// * Protocol Manager - Can manage protocol-level settings
 module clmm_pool::config {
+    #[allow(unused_const)]
+    const COPYRIGHT_NOTICE: vector<u8> = b"© 2025 Metabyte Labs, Inc.  All Rights Reserved.";
+    #[allow(unused_const)]
+    const PATENT_NOTICE: vector<u8> = b"Patent pending - U.S. Patent Application No. 63/861,982";
     /// Error codes
     const EFeeTierAlreadyExists: u64 = 953206230673247475;
     const EFeeTierNotFound: u64 = 957948657035926734;
@@ -42,6 +50,8 @@ module clmm_pool::config {
     const EInvalidTickSpacing: u64 = 923050688745073434;
 
     const INITIAL_PROTOCOL_FEE_RATE: u64 = 2000;
+
+    const PACKAGE_VERSION: u64 = 2;
 
     /// Capability for administrative functions in the protocol.
     /// This capability is required for managing global settings and protocol parameters.
@@ -300,7 +310,7 @@ module clmm_pool::config {
     /// # Abort Conditions
     /// * If the package version is not 1 (error code: EPackageVersionMismatch)
     public fun checked_package_version(config: &GlobalConfig) {
-        assert!(config.package_version == 1, EPackageVersionMismatch); // TODO
+        assert!(config.package_version == PACKAGE_VERSION, EPackageVersionMismatch); // TODO
     }
 
     /// Adds a new fee tier to the global configuration.
@@ -481,7 +491,7 @@ module clmm_pool::config {
             unstaked_liquidity_fee_rate : 0, 
             fee_tiers: sui::vec_map::empty<u32, FeeTier>(),
             acl: clmm_pool::acl::new(ctx),
-            package_version: 1,
+            package_version: PACKAGE_VERSION,
         };
         let admin_cap = AdminCap { id: sui::object::new(ctx) };
         // permission without protocol fee claim
@@ -702,18 +712,7 @@ module clmm_pool::config {
 
     #[test_only]
     public fun test_init(ctx: &mut sui::tx_context::TxContext) {
-        let mut global_config = GlobalConfig {
-            id: sui::object::new(ctx),
-            protocol_fee_rate: INITIAL_PROTOCOL_FEE_RATE,
-            unstaked_liquidity_fee_rate: 0,
-            fee_tiers: sui::vec_map::empty<u32, FeeTier>(),
-            acl: clmm_pool::acl::new(ctx),
-            package_version: 1,
-        };
-        let admin_cap = AdminCap { id: sui::object::new(ctx) };
-        set_roles(&admin_cap, &mut global_config, sui::tx_context::sender(ctx), 27);
-        sui::transfer::share_object(global_config);
-        sui::transfer::transfer(admin_cap, sui::tx_context::sender(ctx));
+        init(ctx);
     }
 
     #[test]

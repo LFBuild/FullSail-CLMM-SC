@@ -1,3 +1,7 @@
+/// © 2025 Metabyte Labs, Inc.  All Rights Reserved.
+/// U.S. Patent Application No. 63/861,982. The technology described herein is the subject of a pending U.S. patent application.
+/// Full Sail has added a license to its Full Sail protocol code. You can view the terms of the license at [ULR](LICENSE/250825_Metabyte_Negotiated_Services_Agreement21634227_2_002.docx).
+
 /// Utility module providing helper functions for the CLMM (Concentrated Liquidity Market Maker) pool system.
 /// This module contains utility functions for string conversion and formatting.
 /// 
@@ -8,6 +12,10 @@
 /// This module is used internally by other modules in the CLMM pool system to:
 /// * Convert numbers to strings for display and logging
 module clmm_pool::utils {
+    #[allow(unused_const)]
+    const COPYRIGHT_NOTICE: vector<u8> = b"© 2025 Metabyte Labs, Inc.  All Rights Reserved.";
+    #[allow(unused_const)]
+    const PATENT_NOTICE: vector<u8> = b"Patent pending - U.S. Patent Application No. 63/861,982";
     /// Converts an unsigned 64-bit integer to its string representation.
     /// 
     /// # Arguments

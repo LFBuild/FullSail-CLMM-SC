@@ -1,3 +1,7 @@
+/// © 2025 Metabyte Labs, Inc.  All Rights Reserved.
+/// U.S. Patent Application No. 63/861,982. The technology described herein is the subject of a pending U.S. patent application.
+/// Full Sail has added a license to its Full Sail protocol code. You can view the terms of the license at [ULR](LICENSE/250825_Metabyte_Negotiated_Services_Agreement21634227_2_002.docx).
+
 /// Tick math module for the CLMM (Concentrated Liquidity Market Maker) pool system.
 /// This module provides functionality for:
 /// * Converting between price and tick index
@@ -23,6 +27,11 @@
 /// * MIN_SQRT_PRICE - Minimum allowed square root price
 /// * MAX_SQRT_PRICE - Maximum allowed square root price
 module clmm_pool::tick_math {
+    #[allow(unused_const)]
+    const COPYRIGHT_NOTICE: vector<u8> = b"© 2025 Metabyte Labs, Inc.  All Rights Reserved.";
+    #[allow(unused_const)]
+    const PATENT_NOTICE: vector<u8> = b"Patent pending - U.S. Patent Application No. 63/861,982";
+
     /// Error codes for the tick math module
     const EInvalidTickBound: u64 = 934062834096783063;
     const EInvalidSqrtPrice: u64 = 923486203946803997;

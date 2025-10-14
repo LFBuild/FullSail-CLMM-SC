@@ -1,10 +1,17 @@
+/// © 2025 Metabyte Labs, Inc.  All Rights Reserved.
+/// U.S. Patent Application No. 63/861,982. The technology described herein is the subject of a pending U.S. patent application.
+/// Full Sail has added a license to its Full Sail protocol code. You can view the terms of the license at [ULR](LICENSE/250825_Metabyte_Negotiated_Services_Agreement21634227_2_002.docx).
+
 #[test_only]
 module clmm_pool::config_tests {
+    #[allow(unused_const)]
+    const COPYRIGHT_NOTICE: vector<u8> = b"© 2025 Metabyte Labs, Inc.  All Rights Reserved.";
+    #[allow(unused_const)]
+    const PATENT_NOTICE: vector<u8> = b"Patent pending - U.S. Patent Application No. 63/861,982";
+
     use clmm_pool::config;
     use sui::test_scenario;
-    use sui::transfer;
-    use sui::object;
-    use std::vector;
+    use clmm_pool::acl;
 
     #[test]
     fun test_fee_and_role_management() {
@@ -61,6 +68,36 @@ module clmm_pool::config_tests {
     }
 
     #[test]
+    fun test_role_checks() {
+        let admin = @0x123;
+        let mut scenario = test_scenario::begin(admin);
+        {
+            config::test_init(scenario.ctx());
+        };
+        scenario.next_tx(admin);
+        {
+            let admin_cap = test_scenario::take_from_sender<config::AdminCap>(&scenario);
+            let mut global_config = test_scenario::take_shared<config::GlobalConfig>(&scenario);
+            config::add_role(&admin_cap, &mut global_config, admin, acl::protocol_fee_claim_role());
+            test_scenario::return_shared(global_config);
+            transfer::public_transfer(admin_cap, admin);
+        };
+
+        scenario.next_tx(admin);
+        {
+            let global_config = scenario.take_shared<config::GlobalConfig>();
+            config::check_pool_manager_role(&global_config, admin);
+            config::check_protocol_fee_claim_role(&global_config, admin);
+            config::check_fee_tier_manager_role(&global_config, admin);
+            config::check_partner_manager_role(&global_config, admin);
+            config::check_rewarder_manager_role(&global_config, admin);
+            test_scenario::return_shared(global_config);
+        };
+
+        test_scenario::end(scenario);
+    }
+
+    #[test]
     fun test_fee_tier_management() {
         let admin = @0x123;
         let mut scenario = test_scenario::begin(admin);
@@ -75,6 +112,10 @@ module clmm_pool::config_tests {
             let mut global_config = test_scenario::take_shared<config::GlobalConfig>(&scenario);
             config::add_fee_tier(&mut global_config, 10, 1000, scenario.ctx());
             assert!(config::get_fee_rate(10, &global_config) == 1000, 1);
+
+            let fee_tier = config::fee_tiers(&global_config).get(&10);
+            assert!(fee_tier.fee_rate() == 1000, 2);
+            assert!(fee_tier.tick_spacing() == 10, 3);
             test_scenario::return_shared(global_config);
             transfer::public_transfer(admin_cap, admin);
         };
@@ -103,6 +144,26 @@ module clmm_pool::config_tests {
         test_scenario::end(scenario);
     }
 
+
+    #[test]
+    #[expected_failure(abort_code = config::EFeeTierNotFound)]
+    fun get_fee_rate_not_found() {
+        let admin = @0x123;
+        let mut scenario = test_scenario::begin(admin);
+        {
+            config::test_init(scenario.ctx());
+        };
+
+        scenario.next_tx(admin);
+        {
+            let global_config = scenario.take_shared<config::GlobalConfig>();
+            config::get_fee_rate(10, &global_config);
+            test_scenario::return_shared(global_config);
+        };
+
+        scenario.end();
+    }
+
     #[test]
     fun test_fee_rate_constants() {
         assert!(config::fee_rate_denom() == 1000000, 1);
@@ -112,7 +173,10 @@ module clmm_pool::config_tests {
         assert!(config::max_protocol_fee_rate() == 3000, 5);
         assert!(config::max_unstaked_liquidity_fee_rate() == 10000, 6);
         assert!(config::default_unstaked_fee_rate() == 72057594037927935, 7);
+        assert!(config::max_tick_spacing() == 500, 8);
+        assert!(config::protocol_fee_rate_denom() == 10000, 9);
     }
+
 
     #[test]
     #[expected_failure(abort_code = config::EFeeRateExceedsMax)]
@@ -129,6 +193,27 @@ module clmm_pool::config_tests {
             let admin_cap = scenario.take_from_sender<config::AdminCap>();
             let mut global_config = scenario.take_shared<config::GlobalConfig>();
             config::add_fee_tier(&mut global_config, 10, config::max_fee_rate() + 1, scenario.ctx());
+            test_scenario::return_shared(global_config);
+            transfer::public_transfer(admin_cap, admin);
+        };
+
+        scenario.end();
+    }
+
+    #[test]
+    #[expected_failure(abort_code = config::EInvalidTickSpacing)]
+    fun test_fee_tier_invalid_tick_spacing_validation() {
+        let admin = @0x123;
+        let mut scenario = test_scenario::begin(admin);
+        {
+            config::test_init(scenario.ctx());
+        };
+
+        scenario.next_tx(admin);
+        {
+            let admin_cap = scenario.take_from_sender<config::AdminCap>();
+            let mut global_config = scenario.take_shared<config::GlobalConfig>();
+            config::add_fee_tier(&mut global_config, config::max_tick_spacing() + 1, 1000, scenario.ctx());
             test_scenario::return_shared(global_config);
             transfer::public_transfer(admin_cap, admin);
         };
@@ -225,7 +310,7 @@ module clmm_pool::config_tests {
         {
             let admin_cap = scenario.take_from_sender<config::AdminCap>();
             let mut global_config = scenario.take_shared<config::GlobalConfig>();
-            config::update_package_version(&admin_cap, &mut global_config, 2);
+            config::update_package_version(&admin_cap, &mut global_config, 3);
             test_scenario::return_shared(global_config);
             transfer::public_transfer(admin_cap, admin);
         };
@@ -266,6 +351,29 @@ module clmm_pool::config_tests {
     }
 
     #[test]
+    #[expected_failure(abort_code = config::EInvalidProtocolFeeRate)]
+    fun test_protocol_fee_rate_validation_same_rate() {
+        let admin = @0x123;
+        let mut scenario = test_scenario::begin(admin);
+        {
+            config::test_init(scenario.ctx());
+        };
+
+        // Test updating protocol fee rate with invalid value
+        test_scenario::next_tx(&mut scenario, admin);
+        {
+            let admin_cap = test_scenario::take_from_sender<config::AdminCap>(&scenario);
+            let mut global_config = test_scenario::take_shared<config::GlobalConfig>(&scenario);
+            let current_rate = config::protocol_fee_rate(&global_config);
+            config::update_protocol_fee_rate(&mut global_config, current_rate, scenario.ctx());
+            test_scenario::return_shared(global_config);
+            transfer::public_transfer(admin_cap, admin);
+        };
+
+        test_scenario::end(scenario);
+    }
+
+    #[test]
     #[expected_failure(abort_code = config::EUnstakedLiquidityFeeRateExceedsMax)]
     fun test_unstaked_liquidity_fee_rate_validation() {
         let admin = @0x123;
@@ -280,6 +388,29 @@ module clmm_pool::config_tests {
             let admin_cap = test_scenario::take_from_sender<config::AdminCap>(&scenario);
             let mut global_config = test_scenario::take_shared<config::GlobalConfig>(&scenario);
             config::update_unstaked_liquidity_fee_rate(&mut global_config, config::max_unstaked_liquidity_fee_rate() + 1, scenario.ctx());
+            test_scenario::return_shared(global_config);
+            transfer::public_transfer(admin_cap, admin);
+        };
+
+        test_scenario::end(scenario);
+    }
+
+    #[test]
+    #[expected_failure(abort_code = config::EInvalidUnstakedLiquidityFeeRate)]
+    fun test_unstaked_liquidity_fee_rate_validation_same_rate() {
+        let admin = @0x123;
+        let mut scenario = test_scenario::begin(admin);
+        {
+            config::test_init(scenario.ctx());
+        };
+
+        // Test updating unstaked liquidity fee rate with invalid value
+        test_scenario::next_tx(&mut scenario, admin);
+        {
+            let admin_cap = test_scenario::take_from_sender<config::AdminCap>(&scenario);
+            let mut global_config = test_scenario::take_shared<config::GlobalConfig>(&scenario);
+            let current_rate = config::unstaked_liquidity_fee_rate(&global_config);
+            config::update_unstaked_liquidity_fee_rate(&mut global_config, current_rate, scenario.ctx());
             test_scenario::return_shared(global_config);
             transfer::public_transfer(admin_cap, admin);
         };
@@ -323,6 +454,140 @@ module clmm_pool::config_tests {
         {
             let admin_cap = test_scenario::take_from_sender<config::AdminCap>(&scenario);
             let mut global_config = test_scenario::take_shared<config::GlobalConfig>(&scenario);
+            config::update_package_version(&admin_cap, &mut global_config, 3);
+            assert!(config::get_package_version(&global_config) == 3, 1);
+            test_scenario::return_shared(global_config);
+            transfer::public_transfer(admin_cap, admin);
+        };
+
+        test_scenario::end(scenario);
+    }
+
+    #[test]
+    #[expected_failure(abort_code = config::EFeeTierNotFound)]
+    fun test_update_fee_tier_not_found_validation() {
+        let admin = @0x123;
+        let mut scenario = test_scenario::begin(admin);
+        {
+            config::test_init(scenario.ctx());
+        };
+
+        scenario.next_tx(admin);
+        {
+            let admin_cap = scenario.take_from_sender<config::AdminCap>();
+            let mut global_config = scenario.take_shared<config::GlobalConfig>();
+            config::update_fee_tier(&mut global_config, 10, 2000, scenario.ctx());
+            test_scenario::return_shared(global_config);
+            transfer::public_transfer(admin_cap, admin);
+        };
+
+        scenario.end();
+    }
+
+    #[test]
+    #[expected_failure(abort_code = config::EFeeRateExceedsMax)]
+    fun test_update_fee_tier_exceeds_max_rate_validation() {
+        let admin = @0x123;
+        let mut scenario = test_scenario::begin(admin);
+        {
+            config::test_init(scenario.ctx());
+        };
+
+        scenario.next_tx(admin);
+        {
+            let admin_cap = scenario.take_from_sender<config::AdminCap>();
+            let mut global_config = scenario.take_shared<config::GlobalConfig>();
+            config::add_fee_tier(&mut global_config, 10, 1000, scenario.ctx());
+            test_scenario::return_shared(global_config);
+            transfer::public_transfer(admin_cap, admin);
+        };
+
+        scenario.next_tx(admin);
+        {
+            let admin_cap = scenario.take_from_sender<config::AdminCap>();
+            let mut global_config = scenario.take_shared<config::GlobalConfig>();
+            config::update_fee_tier(&mut global_config, 10, config::max_fee_rate() + 1, scenario.ctx());
+            test_scenario::return_shared(global_config);
+            transfer::public_transfer(admin_cap, admin);
+        };
+
+        scenario.end();
+    }
+
+    #[test]
+    #[expected_failure(abort_code = config::EInvalidFeeRate)]
+    fun test_update_fee_tier_invalid_fee_rate_validation() {
+        let admin = @0x123;
+        let mut scenario = test_scenario::begin(admin);
+        {
+            config::test_init(scenario.ctx());
+        };
+
+        scenario.next_tx(admin);
+        {
+            let admin_cap = scenario.take_from_sender<config::AdminCap>();
+            let mut global_config = scenario.take_shared<config::GlobalConfig>();
+            config::add_fee_tier(&mut global_config, 10, 1000, scenario.ctx());
+            test_scenario::return_shared(global_config);
+            transfer::public_transfer(admin_cap, admin);
+        };
+
+        scenario.next_tx(admin);
+        {
+            let admin_cap = scenario.take_from_sender<config::AdminCap>();
+            let mut global_config = scenario.take_shared<config::GlobalConfig>();
+            config::update_fee_tier(&mut global_config, 10, 1000, scenario.ctx());
+            test_scenario::return_shared(global_config);
+            transfer::public_transfer(admin_cap, admin);
+        };
+
+        scenario.end();
+    }
+
+    #[test]
+    #[expected_failure(abort_code = config::EFeeTierManagerRole)]
+    fun test_update_fee_tier_manager_role_validation() {
+        let admin = @0x123;
+        let user = @0x456;
+        let mut scenario = test_scenario::begin(admin);
+        {
+            config::test_init(scenario.ctx());
+        };
+
+        scenario.next_tx(admin);
+        {
+            let admin_cap = scenario.take_from_sender<config::AdminCap>();
+            let mut global_config = scenario.take_shared<config::GlobalConfig>();
+            config::add_fee_tier(&mut global_config, 10, 1000, scenario.ctx());
+            test_scenario::return_shared(global_config);
+            transfer::public_transfer(admin_cap, admin);
+        };
+
+        scenario.next_tx(user);
+        {
+            let mut global_config = scenario.take_shared<config::GlobalConfig>();
+            config::update_fee_tier(&mut global_config, 10, 2000, scenario.ctx());
+            test_scenario::return_shared(global_config);
+        };
+
+        scenario.end();
+    }
+
+    #[test]
+    #[expected_failure(abort_code = config::EInvalidPackageVersion)]
+    fun test_update_package_version_invalid_version_validation() {
+        let admin = @0x123;
+        let mut scenario = test_scenario::begin(admin);
+        {
+            config::test_init(scenario.ctx());
+        };
+
+        // Test updating package version with invalid value
+        test_scenario::next_tx(&mut scenario, admin);
+        {
+            let admin_cap = test_scenario::take_from_sender<config::AdminCap>(&scenario);
+            let mut global_config = test_scenario::take_shared<config::GlobalConfig>(&scenario);
+            // current version is 2, so 2 is not > 2
             config::update_package_version(&admin_cap, &mut global_config, 2);
             test_scenario::return_shared(global_config);
             transfer::public_transfer(admin_cap, admin);

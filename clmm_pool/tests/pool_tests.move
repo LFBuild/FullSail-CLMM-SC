@@ -1,5 +1,14 @@
+/// © 2025 Metabyte Labs, Inc.  All Rights Reserved.
+/// U.S. Patent Application No. 63/861,982. The technology described herein is the subject of a pending U.S. patent application.
+/// Full Sail has added a license to its Full Sail protocol code. You can view the terms of the license at [ULR](LICENSE/250825_Metabyte_Negotiated_Services_Agreement21634227_2_002.docx).
+
 #[test_only]
 module clmm_pool::pool_tests {
+    #[allow(unused_const)]
+    const COPYRIGHT_NOTICE: vector<u8> = b"© 2025 Metabyte Labs, Inc.  All Rights Reserved.";
+    #[allow(unused_const)]
+    const PATENT_NOTICE: vector<u8> = b"Patent pending - U.S. Patent Application No. 63/861,982";
+
     use sui::test_scenario;
     use sui::clock;
     use integer_mate::i32;
@@ -74,6 +83,28 @@ module clmm_pool::pool_tests {
             assert!(fee_a == 0 && fee_b == 0, 2);
             assert!(pool::url(&pool) == std::string::utf8(b""), 3);
             assert!(pool::index(&pool) == 0, 4);
+            assert!(pool::is_pause(&pool) == false, 5);
+            assert!(pool::fee_rate(&pool) == 1000, 6);
+            let (fee_growth_a, fee_growth_b) = pool::fees_growth_global(&pool);
+            assert!(fee_growth_a == 0 && fee_growth_b == 0, 7);
+
+            let (fee_in_range_a, fee_in_range_b) = pool::get_fee_in_tick_range(
+                &pool,
+                tick_math::min_tick(),
+                tick_math::max_tick()
+            );
+            assert!(fee_in_range_a == 0 && fee_in_range_b == 0, 8);
+
+            let (volume_a, volume_b) = pool::get_pool_volumes(&pool);
+            assert!(volume_a == 0 && volume_b == 0, 9);
+
+            assert!(pool::get_fullsail_distribution_last_updated(&pool) == 0, 11);
+
+            assert!(pool::get_fullsail_distribution_reserve(&pool) == 0, 12);
+
+            assert!(pool::get_fullsail_distribution_period_finish(&pool) == 0, 13);
+            
+            assert!(pool::get_fullsail_distribution_rollover(&pool) == 0, 13);
             
             // Return objects to scenario
             transfer::public_transfer(pool, admin);
@@ -205,6 +236,26 @@ module clmm_pool::pool_tests {
             let (amount_a, amount_b) = pool::add_liquidity_pay_amount<TestCoinB, TestCoinA>(&receipt);
             assert!(amount_a == 100, 1);
             assert!(amount_b == 0, 2);
+
+            let position_id = object::id(&position);
+
+            let (amount_a_get, amount_b_get) = pool::get_position_amounts<TestCoinB, TestCoinA>(&pool, position_id);
+            assert!(100 - amount_a_get <= 1, 3);
+            assert!(amount_b_get == 0, 4);
+
+            let fullsail_distribution_growth_inside = pool::get_fullsail_distribution_growth_inside(
+                &pool,
+                integer_mate::i32::from(0),
+                integer_mate::i32::from(100),
+                0
+            );
+            assert!(fullsail_distribution_growth_inside == 0, 10);
+
+            let points = pool::get_position_points<TestCoinB, TestCoinA>(&pool, position_id);
+            assert!(points == 0, 11);
+
+            let rewards = pool::get_position_rewards<TestCoinB, TestCoinA>(&pool, position_id);
+            assert!(rewards.is_empty(), 12);
 
             pool::destroy_receipt<TestCoinB, TestCoinA>(receipt);
             
@@ -2425,6 +2476,79 @@ module clmm_pool::pool_tests {
             test_scenario::return_shared(price_provider);
             test_scenario::return_shared(partner);
             test_scenario::return_shared(vault);
+            clock::destroy_for_testing(clock);
+        };
+        
+        test_scenario::end(scenario);
+    }
+
+    #[test]
+    fun test_unpause_pool() {
+        let admin = @0x1;
+        let mut scenario = test_scenario::begin(admin);
+        
+        // Initialize factory and config
+        {
+            factory::test_init(scenario.ctx());
+            config::test_init(scenario.ctx());
+            stats::init_test(scenario.ctx());
+            price_provider::init_test(scenario.ctx());
+            partner::test_init(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
+        };
+        
+        // Add fee tier
+        scenario.next_tx(admin);
+        {
+            let admin_cap = scenario.take_from_sender<config::AdminCap>();
+            let mut global_config = scenario.take_shared<config::GlobalConfig>();
+            config::add_fee_tier(&mut global_config, 1, 1000, scenario.ctx());
+            test_scenario::return_shared(global_config);
+            transfer::public_transfer(admin_cap, admin);
+        };
+        
+        scenario.next_tx(admin);
+        {
+            let global_config = scenario.take_shared<config::GlobalConfig>();
+            let stats = scenario.take_shared<stats::Stats>();
+            let price_provider = scenario.take_shared<price_provider::PriceProvider>();
+            let clock = clock::create_for_testing(scenario.ctx());
+            // Create a pool
+            let mut pool = pool::new<TestCoinB, TestCoinA>(
+                1, // tick_spacing
+                18584142135623730951, // current_tick = 148
+                1000, // fee_rate
+                std::string::utf8(b""), // url
+                0, // pool_index
+                @0x2, // feed_id_coin_a
+                @0x3, // feed_id_coin_b
+                true, // auto_calculation_volumes
+                &clock,
+                scenario.ctx()
+            );
+
+            pool::pause<TestCoinB, TestCoinA>(&global_config, &mut pool, scenario.ctx());
+
+            transfer::public_transfer(pool, @0x1);
+            test_scenario::return_shared(global_config);
+            test_scenario::return_shared(stats);
+            test_scenario::return_shared(price_provider);
+            clock::destroy_for_testing(clock);
+        };
+
+        scenario.next_tx(admin);
+        {
+            let global_config = scenario.take_shared<config::GlobalConfig>();
+            let clock = clock::create_for_testing(scenario.ctx());
+            let mut pool = scenario.take_from_sender<pool::Pool<TestCoinB, TestCoinA>>();
+
+            pool::unpause<TestCoinB, TestCoinA>(&global_config, &mut pool, scenario.ctx());
+
+            assert!(pool.is_pause() == false, 0);
+
+            // Clean up
+            transfer::public_transfer(pool, @0x1);
+            test_scenario::return_shared(global_config);
             clock::destroy_for_testing(clock);
         };
         

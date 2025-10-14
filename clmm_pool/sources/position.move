@@ -1,3 +1,7 @@
+/// © 2025 Metabyte Labs, Inc.  All Rights Reserved.
+/// U.S. Patent Application No. 63/861,982. The technology described herein is the subject of a pending U.S. patent application.
+/// Full Sail has added a license to its Full Sail protocol code. You can view the terms of the license at [ULR](LICENSE/250825_Metabyte_Negotiated_Services_Agreement21634227_2_002.docx).
+
 /// Position module for the CLMM (Concentrated Liquidity Market Maker) pool system.
 /// This module provides functionality for:
 /// * Managing liquidity positions in the pool
@@ -23,6 +27,10 @@
 /// * Fee collection events
 /// * Staking status change events
 module clmm_pool::position {
+    #[allow(unused_const)]
+    const COPYRIGHT_NOTICE: vector<u8> = b"© 2025 Metabyte Labs, Inc.  All Rights Reserved.";
+    #[allow(unused_const)]
+    const PATENT_NOTICE: vector<u8> = b"Patent pending - U.S. Patent Application No. 63/861,982";
 
     const ENotOwner: u64 = 985489328434574338;
     const EOverflow: u64 = 923065912304623497;
@@ -736,6 +744,10 @@ module clmm_pool::position {
     /// * `false` otherwise
     public fun is_staked(position_info: &PositionInfo): bool {
         position_info.fullsail_distribution_staked
+    }
+
+    public fun is_position_staked(position_manager: &PositionManager, position_id: sui::object::ID): bool {
+        borrow_position_info(position_manager, position_id).fullsail_distribution_staked
     }
 
     /// Returns the current liquidity of a position.
@@ -1565,33 +1577,7 @@ module clmm_pool::position {
     /// Test initialization of the position system
     /// Replicates the init function logic for testing purposes
     public fun test_init(ctx: &mut sui::tx_context::TxContext) {
-        
-        let publisher = sui::package::claim<POSITION>(POSITION{}, ctx);
-
-        let display = update_display(
-            &publisher,
-            std::string::utf8(b"{name}"),
-            std::string::utf8(b"{coin_type_a}"),
-            std::string::utf8(b"{coin_type_b}"),
-            std::string::utf8(b"https://app.fullsailfinance.io/position?chain=sui&id={id}"),
-            std::string::utf8(b"{url}"),
-            std::string::utf8(b"{description}"),
-            std::string::utf8(b"https://fullsailfinance.io"),
-            std::string::utf8(b"FULLSAIL"),
-            ctx
-        );
-
-        sui::transfer::public_transfer<sui::display::Display<Position>>(display, sui::tx_context::sender(ctx));
-        sui::transfer::public_transfer<sui::package::Publisher>(publisher, sui::tx_context::sender(ctx));
-    }
-
-    #[test_only]
-    /// Creates a new PositionReward for testing purposes
-    public fun new_position_reward(growth_inside: u128, amount_owned: u64): PositionReward {
-        PositionReward {
-            growth_inside,
-            amount_owned,
-        }
+        init(POSITION{}, ctx);
     }
 
     #[test_only]

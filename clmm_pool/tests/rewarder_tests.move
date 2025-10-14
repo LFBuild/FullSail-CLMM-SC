@@ -1,5 +1,14 @@
+/// © 2025 Metabyte Labs, Inc.  All Rights Reserved.
+/// U.S. Patent Application No. 63/861,982. The technology described herein is the subject of a pending U.S. patent application.
+/// Full Sail has added a license to its Full Sail protocol code. You can view the terms of the license at [ULR](LICENSE/250825_Metabyte_Negotiated_Services_Agreement21634227_2_002.docx).
+
 #[test_only]
 module clmm_pool::rewarder_tests {
+    #[allow(unused_const)]
+    const COPYRIGHT_NOTICE: vector<u8> = b"© 2025 Metabyte Labs, Inc.  All Rights Reserved.";
+    #[allow(unused_const)]
+    const PATENT_NOTICE: vector<u8> = b"Patent pending - U.S. Patent Application No. 63/861,982";
+
     use clmm_pool::rewarder;
     use sui::test_scenario;
     use sui::coin;
@@ -16,6 +25,15 @@ module clmm_pool::rewarder_tests {
 
     #[test_only]
     public struct MY_COIN4 has drop {}
+
+    #[test_only]
+    public struct MY_COIN5 has drop {}
+
+    #[test_only]
+    public struct MY_COIN6 has drop {}
+
+    #[test_only]
+    public struct MY_COIN7 has drop {}
 
     #[test_only]
     public struct TestRewarder has store, key {
@@ -155,6 +173,9 @@ module clmm_pool::rewarder_tests {
             rewarder::add_rewarder<MY_COIN2>(&mut test_rewarder.rewarder_manager);
             rewarder::add_rewarder<MY_COIN3>(&mut test_rewarder.rewarder_manager);
             rewarder::add_rewarder<MY_COIN4>(&mut test_rewarder.rewarder_manager);
+            rewarder::add_rewarder<MY_COIN5>(&mut test_rewarder.rewarder_manager);
+            rewarder::add_rewarder<MY_COIN6>(&mut test_rewarder.rewarder_manager);
+            rewarder::add_rewarder<MY_COIN7>(&mut test_rewarder.rewarder_manager);
             transfer::public_transfer(test_rewarder, admin);
         };
 
