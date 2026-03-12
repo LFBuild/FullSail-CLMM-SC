@@ -6825,6 +6825,7 @@ module clmm_pool::pool_tests {
             let (fee_a, fee_b) = pool::collect_fee<TestCoinB, TestCoinA>(
                 &global_config, &mut pool, &position_unstaked, true
             );
+            std::debug::print(&fee_a.value());
             assert!(sui::balance::value(&fee_a) == 36000, 1);
             assert!(sui::balance::value(&fee_b) == 36000, 2);
 

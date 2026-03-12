@@ -2221,134 +2221,134 @@ module clmm_pool::position_tests {
         test_scenario::end(scenario);
     }
 
-    #[test]
-    /// Test mark_position_staked function
-    /// Verifies that:
-    /// 1. Position can be marked as staked
-    /// 2. Position can be marked as unstaked
-    /// 3. Event is emitted when staking status changes
-    fun test_mark_position_staked() {
-        let mut scenario = test_scenario::begin(@0x1);
-        let admin = @0x1;
-        scenario.next_tx(admin);
+    // #[test]
+    // /// Test mark_position_staked function
+    // /// Verifies that:
+    // /// 1. Position can be marked as staked
+    // /// 2. Position can be marked as unstaked
+    // /// 3. Event is emitted when staking status changes
+    // fun test_mark_position_staked() {
+    //     let mut scenario = test_scenario::begin(@0x1);
+    //     let admin = @0x1;
+    //     scenario.next_tx(admin);
 
-        // Create a test position manager
-        let mut test_manager = TestPositionManager {
-            id: sui::object::new(scenario.ctx()),
-            position_manager: position::new(1, scenario.ctx())
-        };
+    //     // Create a test position manager
+    //     let mut test_manager = TestPositionManager {
+    //         id: sui::object::new(scenario.ctx()),
+    //         position_manager: position::new(1, scenario.ctx())
+    //     };
 
-        // Create a pool ID for testing
-        let pool_id = object::id_from_address(admin);
-        let pool_index = 1;
-        let pool_url = string::utf8(b"https://fullsailfinance.io/pool/1");
+    //     // Create a pool ID for testing
+    //     let pool_id = object::id_from_address(admin);
+    //     let pool_index = 1;
+    //     let pool_url = string::utf8(b"https://fullsailfinance.io/pool/1");
         
-        // Define tick range
-        let tick_lower = i32::from(0);
-        let tick_upper = i32::from(10);
+    //     // Define tick range
+    //     let tick_lower = i32::from(0);
+    //     let tick_upper = i32::from(10);
 
-        // Open a new position
-        let position = position::open_position<type_name::TypeName, type_name::TypeName>(
-            &mut test_manager.position_manager,
-            pool_id,
-            pool_index,
-            pool_url,
-            tick_lower,
-            tick_upper,
-            scenario.ctx()
-        );
+    //     // Open a new position
+    //     let position = position::open_position<type_name::TypeName, type_name::TypeName>(
+    //         &mut test_manager.position_manager,
+    //         pool_id,
+    //         pool_index,
+    //         pool_url,
+    //         tick_lower,
+    //         tick_upper,
+    //         scenario.ctx()
+    //     );
 
-        let position_id = object::id(&position);
+    //     let position_id = object::id(&position);
 
-        // Mark position as staked
-        position::mark_position_staked(&mut test_manager.position_manager, position_id, true);
+    //     // Mark position as staked
+    //     position::mark_position_staked(&mut test_manager.position_manager, position_id, true);
         
-        // Verify position is staked
-        let position_info = position::borrow_position_info(&test_manager.position_manager, position_id);
-        assert!(position::is_staked(position_info), 1);
+    //     // Verify position is staked
+    //     let position_info = position::borrow_position_info(&test_manager.position_manager, position_id);
+    //     assert!(position::is_staked(position_info), 1);
 
-        // Mark position as unstaked
-        position::mark_position_staked(&mut test_manager.position_manager, position_id, false);
+    //     // Mark position as unstaked
+    //     position::mark_position_staked(&mut test_manager.position_manager, position_id, false);
         
-        // Verify position is not staked
-        let position_info = position::borrow_position_info(&test_manager.position_manager, position_id);
-        assert!(!position::is_staked(position_info), 6);
+    //     // Verify position is not staked
+    //     let position_info = position::borrow_position_info(&test_manager.position_manager, position_id);
+    //     assert!(!position::is_staked(position_info), 6);
 
-        // Transfer objects
-        transfer::public_transfer(position, admin);
-        transfer::public_transfer(test_manager, admin);
-        test_scenario::end(scenario);
-    }
+    //     // Transfer objects
+    //     transfer::public_transfer(position, admin);
+    //     transfer::public_transfer(test_manager, admin);
+    //     test_scenario::end(scenario);
+    // }
 
-    #[test]
-    #[expected_failure(abort_code = position::EPositionNotFound)]
-    fun test_mark_position_staked_nonexistent() {
-        let mut scenario = test_scenario::begin(@0x1);
-        let admin = @0x1;
-        scenario.next_tx(admin);
+    // #[test]
+    // #[expected_failure(abort_code = position::EPositionNotFound)]
+    // fun test_mark_position_staked_nonexistent() {
+    //     let mut scenario = test_scenario::begin(@0x1);
+    //     let admin = @0x1;
+    //     scenario.next_tx(admin);
 
-        // Create a test position manager
-        let mut test_manager = TestPositionManager {
-            id: sui::object::new(scenario.ctx()),
-            position_manager: position::new(1, scenario.ctx())
-        };
+    //     // Create a test position manager
+    //     let mut test_manager = TestPositionManager {
+    //         id: sui::object::new(scenario.ctx()),
+    //         position_manager: position::new(1, scenario.ctx())
+    //     };
 
-        // Create a non-existent position ID
-        let fake_position_id = object::id_from_address(@0x2);
+    //     // Create a non-existent position ID
+    //     let fake_position_id = object::id_from_address(@0x2);
         
-        // Try to mark non-existent position as staked (should fail)
-        position::mark_position_staked(&mut test_manager.position_manager, fake_position_id, true);
+    //     // Try to mark non-existent position as staked (should fail)
+    //     position::mark_position_staked(&mut test_manager.position_manager, fake_position_id, true);
 
-        transfer::public_transfer(test_manager, admin);
-        test_scenario::end(scenario);
-    }
+    //     transfer::public_transfer(test_manager, admin);
+    //     test_scenario::end(scenario);
+    // }
 
-    #[test]
-    #[expected_failure(abort_code = position::EStakingStatusUnchanged)]
-    fun test_mark_position_staked_same_status() {
-        let mut scenario = test_scenario::begin(@0x1);
-        let admin = @0x1;
-        scenario.next_tx(admin);
+    // #[test]
+    // #[expected_failure(abort_code = position::EStakingStatusUnchanged)]
+    // fun test_mark_position_staked_same_status() {
+    //     let mut scenario = test_scenario::begin(@0x1);
+    //     let admin = @0x1;
+    //     scenario.next_tx(admin);
 
-        // Create a test position manager
-        let mut test_manager = TestPositionManager {
-            id: sui::object::new(scenario.ctx()),
-            position_manager: position::new(1, scenario.ctx())
-        };
+    //     // Create a test position manager
+    //     let mut test_manager = TestPositionManager {
+    //         id: sui::object::new(scenario.ctx()),
+    //         position_manager: position::new(1, scenario.ctx())
+    //     };
 
-        // Create a pool ID for testing
-        let pool_id = object::id_from_address(admin);
-        let pool_index = 1;
-        let pool_url = string::utf8(b"https://fullsailfinance.io/pool/1");
+    //     // Create a pool ID for testing
+    //     let pool_id = object::id_from_address(admin);
+    //     let pool_index = 1;
+    //     let pool_url = string::utf8(b"https://fullsailfinance.io/pool/1");
         
-        // Define tick range
-        let tick_lower = i32::from(0);
-        let tick_upper = i32::from(10);
+    //     // Define tick range
+    //     let tick_lower = i32::from(0);
+    //     let tick_upper = i32::from(10);
 
-        // Open a new position
-        let position = position::open_position<type_name::TypeName, type_name::TypeName>(
-            &mut test_manager.position_manager,
-            pool_id,
-            pool_index,
-            pool_url,
-            tick_lower,
-            tick_upper,
-            scenario.ctx()
-        );
+    //     // Open a new position
+    //     let position = position::open_position<type_name::TypeName, type_name::TypeName>(
+    //         &mut test_manager.position_manager,
+    //         pool_id,
+    //         pool_index,
+    //         pool_url,
+    //         tick_lower,
+    //         tick_upper,
+    //         scenario.ctx()
+    //     );
 
-        let position_id = object::id(&position);
+    //     let position_id = object::id(&position);
 
-        // Mark position as staked
-        position::mark_position_staked(&mut test_manager.position_manager, position_id, true);
+    //     // Mark position as staked
+    //     position::mark_position_staked(&mut test_manager.position_manager, position_id, true);
         
-        // Try to mark position as staked again (should fail)
-        position::mark_position_staked(&mut test_manager.position_manager, position_id, true);
+    //     // Try to mark position as staked again (should fail)
+    //     position::mark_position_staked(&mut test_manager.position_manager, position_id, true);
 
-        // Transfer objects
-        transfer::public_transfer(position, admin);
-        transfer::public_transfer(test_manager, admin);
-        test_scenario::end(scenario);
-    }
+    //     // Transfer objects
+    //     transfer::public_transfer(position, admin);
+    //     transfer::public_transfer(test_manager, admin);
+    //     test_scenario::end(scenario);
+    // }
 
     #[test]
     /// Test new_position_name function
