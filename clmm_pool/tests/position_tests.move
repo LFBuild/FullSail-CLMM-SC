@@ -2221,134 +2221,224 @@ module clmm_pool::position_tests {
         test_scenario::end(scenario);
     }
 
-    // #[test]
-    // /// Test mark_position_staked function
-    // /// Verifies that:
-    // /// 1. Position can be marked as staked
-    // /// 2. Position can be marked as unstaked
-    // /// 3. Event is emitted when staking status changes
-    // fun test_mark_position_staked() {
-    //     let mut scenario = test_scenario::begin(@0x1);
-    //     let admin = @0x1;
-    //     scenario.next_tx(admin);
+    #[test]
+    /// Test mark_position_staked function
+    /// Verifies that:
+    /// 1. Position can be marked as staked
+    /// 2. Position can be marked as unstaked
+    /// 3. Event is emitted when staking status changes
+    fun test_mark_position_staked() {
+        let mut scenario = test_scenario::begin(@0x1);
+        let admin = @0x1;
+        scenario.next_tx(admin);
 
-    //     // Create a test position manager
-    //     let mut test_manager = TestPositionManager {
-    //         id: sui::object::new(scenario.ctx()),
-    //         position_manager: position::new(1, scenario.ctx())
-    //     };
+        // Create a test position manager
+        let mut test_manager = TestPositionManager {
+            id: sui::object::new(scenario.ctx()),
+            position_manager: position::new(1, scenario.ctx())
+        };
 
-    //     // Create a pool ID for testing
-    //     let pool_id = object::id_from_address(admin);
-    //     let pool_index = 1;
-    //     let pool_url = string::utf8(b"https://fullsailfinance.io/pool/1");
-        
-    //     // Define tick range
-    //     let tick_lower = i32::from(0);
-    //     let tick_upper = i32::from(10);
+        // Create a pool ID for testing
+        let pool_id = object::id_from_address(admin);
+        let pool_index = 1;
+        let pool_url = string::utf8(b"https://fullsailfinance.io/pool/1");
 
-    //     // Open a new position
-    //     let position = position::open_position<type_name::TypeName, type_name::TypeName>(
-    //         &mut test_manager.position_manager,
-    //         pool_id,
-    //         pool_index,
-    //         pool_url,
-    //         tick_lower,
-    //         tick_upper,
-    //         scenario.ctx()
-    //     );
+        // Define tick range
+        let tick_lower = i32::from(0);
+        let tick_upper = i32::from(10);
 
-    //     let position_id = object::id(&position);
+        // Open a new position
+        let position = position::open_position<type_name::TypeName, type_name::TypeName>(
+            &mut test_manager.position_manager,
+            pool_id,
+            pool_index,
+            pool_url,
+            tick_lower,
+            tick_upper,
+            scenario.ctx()
+        );
 
-    //     // Mark position as staked
-    //     position::mark_position_staked(&mut test_manager.position_manager, position_id, true);
-        
-    //     // Verify position is staked
-    //     let position_info = position::borrow_position_info(&test_manager.position_manager, position_id);
-    //     assert!(position::is_staked(position_info), 1);
+        let position_id = object::id(&position);
 
-    //     // Mark position as unstaked
-    //     position::mark_position_staked(&mut test_manager.position_manager, position_id, false);
-        
-    //     // Verify position is not staked
-    //     let position_info = position::borrow_position_info(&test_manager.position_manager, position_id);
-    //     assert!(!position::is_staked(position_info), 6);
+        // Mark position as staked (fee_growth_a=0, fee_growth_b=0 since no fees accrued)
+        position::mark_position_staked(&mut test_manager.position_manager, position_id, 0, 0, true);
 
-    //     // Transfer objects
-    //     transfer::public_transfer(position, admin);
-    //     transfer::public_transfer(test_manager, admin);
-    //     test_scenario::end(scenario);
-    // }
+        // Verify position is staked
+        let position_info = position::borrow_position_info(&test_manager.position_manager, position_id);
+        assert!(position::is_staked(position_info), 1);
 
-    // #[test]
-    // #[expected_failure(abort_code = position::EPositionNotFound)]
-    // fun test_mark_position_staked_nonexistent() {
-    //     let mut scenario = test_scenario::begin(@0x1);
-    //     let admin = @0x1;
-    //     scenario.next_tx(admin);
+        // Mark position as unstaked
+        position::mark_position_staked(&mut test_manager.position_manager, position_id, 0, 0, false);
 
-    //     // Create a test position manager
-    //     let mut test_manager = TestPositionManager {
-    //         id: sui::object::new(scenario.ctx()),
-    //         position_manager: position::new(1, scenario.ctx())
-    //     };
+        // Verify position is not staked
+        let position_info = position::borrow_position_info(&test_manager.position_manager, position_id);
+        assert!(!position::is_staked(position_info), 6);
 
-    //     // Create a non-existent position ID
-    //     let fake_position_id = object::id_from_address(@0x2);
-        
-    //     // Try to mark non-existent position as staked (should fail)
-    //     position::mark_position_staked(&mut test_manager.position_manager, fake_position_id, true);
+        // Transfer objects
+        transfer::public_transfer(position, admin);
+        transfer::public_transfer(test_manager, admin);
+        test_scenario::end(scenario);
+    }
 
-    //     transfer::public_transfer(test_manager, admin);
-    //     test_scenario::end(scenario);
-    // }
+    #[test]
+    /// Test mark_position_staked with non-zero fee growths.
+    /// Verifies that:
+    /// 1. update_fee_internal accrues fee_owned for unstaked position before staking
+    /// 2. fee_growth_inside is snapshotted to the provided values
+    /// 3. Position is marked as staked
+    /// 4. After staking, a second fee growth update does NOT accrue fee_owned (staked guard)
+    ///
+    /// Math (staking):
+    ///   liquidity = 100 << 64
+    ///   fee_growth_a = 500, fee_growth_b = 300 (Q64-scaled, position starts at 0)
+    ///   fee_owned_a = (100 << 64) * (500 - 0) >> 64 = 50000
+    ///   fee_owned_b = (100 << 64) * (300 - 0) >> 64 = 30000
+    ///
+    /// Math (unstaking at growth 800, 600):
+    ///   Position is staked, so update_fee_internal skips fee accrual (delta = 0)
+    ///   fee_owned_a stays 50000, fee_owned_b stays 30000
+    ///   fee_growth_inside snapshotted to (800, 600)
+    fun test_mark_position_staked_with_fee_growth() {
+        let mut scenario = test_scenario::begin(@0x1);
+        let admin = @0x1;
+        scenario.next_tx(admin);
 
-    // #[test]
-    // #[expected_failure(abort_code = position::EStakingStatusUnchanged)]
-    // fun test_mark_position_staked_same_status() {
-    //     let mut scenario = test_scenario::begin(@0x1);
-    //     let admin = @0x1;
-    //     scenario.next_tx(admin);
+        let mut test_manager = TestPositionManager {
+            id: sui::object::new(scenario.ctx()),
+            position_manager: position::new(1, scenario.ctx())
+        };
 
-    //     // Create a test position manager
-    //     let mut test_manager = TestPositionManager {
-    //         id: sui::object::new(scenario.ctx()),
-    //         position_manager: position::new(1, scenario.ctx())
-    //     };
+        let pool_id = object::id_from_address(admin);
+        let tick_lower = i32::from(0);
+        let tick_upper = i32::from(10);
 
-    //     // Create a pool ID for testing
-    //     let pool_id = object::id_from_address(admin);
-    //     let pool_index = 1;
-    //     let pool_url = string::utf8(b"https://fullsailfinance.io/pool/1");
-        
-    //     // Define tick range
-    //     let tick_lower = i32::from(0);
-    //     let tick_upper = i32::from(10);
+        let mut position = position::open_position<type_name::TypeName, type_name::TypeName>(
+            &mut test_manager.position_manager,
+            pool_id,
+            1,
+            string::utf8(b"https://fullsailfinance.io/pool/1"),
+            tick_lower,
+            tick_upper,
+            scenario.ctx()
+        );
+        let position_id = object::id(&position);
 
-    //     // Open a new position
-    //     let position = position::open_position<type_name::TypeName, type_name::TypeName>(
-    //         &mut test_manager.position_manager,
-    //         pool_id,
-    //         pool_index,
-    //         pool_url,
-    //         tick_lower,
-    //         tick_upper,
-    //         scenario.ctx()
-    //     );
+        // Add liquidity so fee accrual produces non-zero amounts
+        position::increase_liquidity(
+            &mut test_manager.position_manager,
+            &mut position,
+            100 << 64,
+            0, 0, 0, vector::empty<u128>(), 0
+        );
 
-    //     let position_id = object::id(&position);
+        // --- Stake with fee_growth = (500, 300) ---
+        // Position is unstaked, so update_fee_internal accrues fees first
+        position::mark_position_staked(&mut test_manager.position_manager, position_id, 500, 300, true);
 
-    //     // Mark position as staked
-    //     position::mark_position_staked(&mut test_manager.position_manager, position_id, true);
-        
-    //     // Try to mark position as staked again (should fail)
-    //     position::mark_position_staked(&mut test_manager.position_manager, position_id, true);
+        let position_info = position::borrow_position_info(&test_manager.position_manager, position_id);
+        assert!(position::is_staked(position_info), 1);
 
-    //     // Transfer objects
-    //     transfer::public_transfer(position, admin);
-    //     transfer::public_transfer(test_manager, admin);
-    //     test_scenario::end(scenario);
-    // }
+        // fee_growth_inside snapshotted to (500, 300)
+        let (fg_a, fg_b) = position::info_fee_growth_inside(position_info);
+        assert!(fg_a == 500, 2);
+        assert!(fg_b == 300, 3);
+
+        // fee_owned = liquidity * fee_growth_delta >> 64 = 100 * 500 = 50000, 100 * 300 = 30000
+        let (fo_a, fo_b) = position::info_fee_owned(position_info);
+        assert!(fo_a == 50000, 4);
+        assert!(fo_b == 30000, 5);
+
+        // --- Unstake with fee_growth = (800, 600) ---
+        // Position is staked, so update_fee_internal does NOT accrue fees (staked guard)
+        position::mark_position_staked(&mut test_manager.position_manager, position_id, 800, 600, false);
+
+        let position_info = position::borrow_position_info(&test_manager.position_manager, position_id);
+        assert!(!position::is_staked(position_info), 6);
+
+        // fee_growth_inside snapshotted to (800, 600)
+        let (fg_a, fg_b) = position::info_fee_growth_inside(position_info);
+        assert!(fg_a == 800, 7);
+        assert!(fg_b == 600, 8);
+
+        // fee_owned unchanged — staked positions don't accrue
+        let (fo_a, fo_b) = position::info_fee_owned(position_info);
+        assert!(fo_a == 50000, 9);
+        assert!(fo_b == 30000, 10);
+
+        transfer::public_transfer(position, admin);
+        transfer::public_transfer(test_manager, admin);
+        test_scenario::end(scenario);
+    }
+
+    #[test]
+    #[expected_failure(abort_code = position::EPositionNotFound)]
+    fun test_mark_position_staked_nonexistent() {
+        let mut scenario = test_scenario::begin(@0x1);
+        let admin = @0x1;
+        scenario.next_tx(admin);
+
+        // Create a test position manager
+        let mut test_manager = TestPositionManager {
+            id: sui::object::new(scenario.ctx()),
+            position_manager: position::new(1, scenario.ctx())
+        };
+
+        // Create a non-existent position ID
+        let fake_position_id = object::id_from_address(@0x2);
+
+        // Try to mark non-existent position as staked (should fail)
+        position::mark_position_staked(&mut test_manager.position_manager, fake_position_id, 0, 0, true);
+
+        transfer::public_transfer(test_manager, admin);
+        test_scenario::end(scenario);
+    }
+
+    #[test]
+    #[expected_failure(abort_code = position::EStakingStatusUnchanged)]
+    fun test_mark_position_staked_same_status() {
+        let mut scenario = test_scenario::begin(@0x1);
+        let admin = @0x1;
+        scenario.next_tx(admin);
+
+        // Create a test position manager
+        let mut test_manager = TestPositionManager {
+            id: sui::object::new(scenario.ctx()),
+            position_manager: position::new(1, scenario.ctx())
+        };
+
+        // Create a pool ID for testing
+        let pool_id = object::id_from_address(admin);
+        let pool_index = 1;
+        let pool_url = string::utf8(b"https://fullsailfinance.io/pool/1");
+
+        // Define tick range
+        let tick_lower = i32::from(0);
+        let tick_upper = i32::from(10);
+
+        // Open a new position
+        let position = position::open_position<type_name::TypeName, type_name::TypeName>(
+            &mut test_manager.position_manager,
+            pool_id,
+            pool_index,
+            pool_url,
+            tick_lower,
+            tick_upper,
+            scenario.ctx()
+        );
+
+        let position_id = object::id(&position);
+
+        // Mark position as staked
+        position::mark_position_staked(&mut test_manager.position_manager, position_id, 0, 0, true);
+
+        // Try to mark position as staked again (should fail)
+        position::mark_position_staked(&mut test_manager.position_manager, position_id, 0, 0, true);
+
+        // Transfer objects
+        transfer::public_transfer(position, admin);
+        transfer::public_transfer(test_manager, admin);
+        test_scenario::end(scenario);
+    }
 
     #[test]
     /// Test new_position_name function
@@ -2644,6 +2734,94 @@ module clmm_pool::position_tests {
         let (fee_growth_a, fee_growth_b) = position::info_fee_growth_inside(position::borrow_position_info(&test_manager.position_manager, position_id));
         assert!(fee_growth_a == 1000, 7);
         assert!(fee_growth_b == 2000, 8);
+
+        transfer::public_transfer(test_manager, admin);
+        test_scenario::end(scenario);
+    }
+
+    #[test]
+    /// Test update_and_reset_fee for a staked position.
+    /// Verifies correct behavior: fee_growth_inside updates, fee_owned does NOT accrue.
+    ///
+    /// Setup:
+    ///   - Position with liquidity = 100 << 64
+    ///   - Pre-existing fee_owned = (100, 200) set via test_update_fees
+    ///   - Staked at fee_growth = (500, 300) — accrues fees before staking
+    ///     fee_owned becomes (100 + 50000, 200 + 30000) = (50100, 30200)
+    ///
+    /// Action: update_and_reset_fee with fee_growth = (1000, 2000)
+    ///
+    /// Expected (correct behavior — staked guard in update_fee_internal):
+    ///   - update_fee_internal: staked → fee_owned_delta = 0 (no accrual)
+    ///   - fee_growth_inside updated to (1000, 2000)
+    ///   - Returns pre-existing fee_owned (50100, 30200) then resets to (0, 0)
+    fun test_update_and_reset_fee_staked() {
+        let admin = @0x123;
+        let mut scenario = test_scenario::begin(admin);
+
+        let mut test_manager = TestPositionManager {
+            id: sui::object::new(scenario.ctx()),
+            position_manager: position::new(1, scenario.ctx())
+        };
+        test_scenario::next_tx(&mut scenario, admin);
+
+        let mut position = position::open_position<type_name::TypeName, type_name::TypeName>(
+            &mut test_manager.position_manager,
+            object::id_from_address(admin),
+            1,
+            std::string::utf8(b"https://fullsailfinance.io/pool/1"),
+            integer_mate::i32::neg_from(10),
+            i32::from(10),
+            test_scenario::ctx(&mut scenario)
+        );
+        let position_id = object::id(&position);
+        transfer::public_transfer(position, admin);
+
+        // Add liquidity
+        test_scenario::next_tx(&mut scenario, admin);
+        let mut position = scenario.take_from_sender<position::Position>();
+        position::increase_liquidity(
+            &mut test_manager.position_manager,
+            &mut position,
+            100 << 64,
+            0, 0, 0, vector::empty<u128>(), 0
+        );
+        transfer::public_transfer(position, admin);
+
+        // Set pre-existing fee_owned
+        test_update_fees(&mut test_manager.position_manager, position_id, 100, 200);
+
+        // Stake at fee_growth = (500, 300)
+        // update_fee_internal runs while unstaked: accrues 100*500=50000, 100*300=30000
+        // fee_owned becomes (100+50000, 200+30000) = (50100, 30200)
+        position::mark_position_staked(&mut test_manager.position_manager, position_id, 500, 300, true);
+
+        // Verify state after staking
+        let pi = position::borrow_position_info(&test_manager.position_manager, position_id);
+        assert!(position::is_staked(pi), 1);
+        let (fo_a, fo_b) = position::info_fee_owned(pi);
+        assert!(fo_a == 50100, 2);
+        assert!(fo_b == 30200, 3);
+
+        // update_and_reset_fee with new fee_growth = (1000, 2000)
+        // Position is staked → update_fee_internal skips accrual (delta = 0)
+        // Returns (50100, 30200), resets to (0, 0)
+        let (reset_a, reset_b) = position::update_and_reset_fee(
+            &mut test_manager.position_manager, position_id, 1000, 2000
+        );
+        assert!(reset_a == 50100, 4);
+        assert!(reset_b == 30200, 5);
+
+        // fee_owned reset to zero
+        let pi = position::borrow_position_info(&test_manager.position_manager, position_id);
+        let (fo_a, fo_b) = position::info_fee_owned(pi);
+        assert!(fo_a == 0, 6);
+        assert!(fo_b == 0, 7);
+
+        // fee_growth_inside updated to (1000, 2000)
+        let (fg_a, fg_b) = position::info_fee_growth_inside(pi);
+        assert!(fg_a == 1000, 8);
+        assert!(fg_b == 2000, 9);
 
         transfer::public_transfer(test_manager, admin);
         test_scenario::end(scenario);
