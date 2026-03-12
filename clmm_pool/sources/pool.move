@@ -4180,5 +4180,15 @@ module clmm_pool::pool {
             swap_result.steps
         )
     }
+
+    #[test_only]
+    public fun test_set_fee_growth_global<CoinTypeA, CoinTypeB>(
+        pool: &mut Pool<CoinTypeA, CoinTypeB>,
+        fee_growth_global_a: u128,
+        fee_growth_global_b: u128
+    ) {
+        pool.fee_growth_global_a = fee_growth_global_a;
+        pool.fee_growth_global_b = fee_growth_global_b;
+    }
 }
 
