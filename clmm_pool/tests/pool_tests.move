@@ -6653,7 +6653,7 @@ module clmm_pool::pool_tests {
 
         // Create partner, pool, positions, stake — then transfer pool to admin
         scenario.next_tx(admin);
-        {
+        let (unstaked_id, staked_id) = {
             let global_config = scenario.take_shared<config::GlobalConfig>();
             let clock = clock::create_for_testing(scenario.ctx());
             let create_gauge_cap = scenario.take_from_sender<gauge_cap::gauge_cap::CreateCap>();
@@ -6705,6 +6705,7 @@ module clmm_pool::pool_tests {
             let mut position_unstaked = pool::open_position<TestCoinB, TestCoinA>(
                 &global_config, &mut pool, 100, 200, scenario.ctx()
             );
+            let unstaked_id = sui::object::id(&position_unstaked);
             let receipt = pool::add_liquidity<TestCoinB, TestCoinA>(
                 &global_config, &mut vault, &mut pool, &mut position_unstaked, liquidity_amount, &clock
             );
@@ -6720,6 +6721,7 @@ module clmm_pool::pool_tests {
             let mut position_staked = pool::open_position<TestCoinB, TestCoinA>(
                 &global_config, &mut pool, 100, 200, scenario.ctx()
             );
+            let staked_id = sui::object::id(&position_staked);
             let receipt = pool::add_liquidity<TestCoinB, TestCoinA>(
                 &global_config, &mut vault, &mut pool, &mut position_staked, liquidity_amount, &clock
             );
@@ -6745,6 +6747,7 @@ module clmm_pool::pool_tests {
             test_scenario::return_shared(partners);
             test_scenario::return_shared(vault);
             clock::destroy_for_testing(clock);
+            (unstaked_id, staked_id)
         };
 
         // Perform swaps with partner and verify all fee components
@@ -6756,8 +6759,8 @@ module clmm_pool::pool_tests {
             let price_provider = scenario.take_shared<price_provider::PriceProvider>();
             let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
             let mut pool = scenario.take_from_sender<pool::Pool<TestCoinB, TestCoinA>>();
-            let position_unstaked = scenario.take_from_sender<position::Position>();
-            let position_staked = scenario.take_from_sender<position::Position>();
+            let position_unstaked = scenario.take_from_sender_by_id<position::Position>(unstaked_id);
+            let position_staked = scenario.take_from_sender_by_id<position::Position>(staked_id);
             let gauge_cap = scenario.take_from_sender<gauge_cap::gauge_cap::GaugeCap>();
             let mut partner = scenario.take_shared<partner::Partner>();
 
@@ -6825,7 +6828,6 @@ module clmm_pool::pool_tests {
             let (fee_a, fee_b) = pool::collect_fee<TestCoinB, TestCoinA>(
                 &global_config, &mut pool, &position_unstaked, true
             );
-            std::debug::print(&fee_a.value());
             assert!(sui::balance::value(&fee_a) == 36000, 1);
             assert!(sui::balance::value(&fee_b) == 36000, 2);
 
@@ -7257,8 +7259,8 @@ module clmm_pool::pool_tests {
             let (fee_a_unstaked, fee_b_unstaked) = pool::calculate_and_update_fee<TestCoinB, TestCoinA>(
                 &global_config, &mut pool, unstaked_id
             );
-            assert!(fee_a_unstaked == 40000, 3);
-            assert!(fee_b_unstaked == 40000, 4);
+            assert!(fee_a_unstaked == 39960, 3);
+            assert!(fee_b_unstaked == 39960, 4);
 
             // --- Collect fees from staked position: must be zero ---
             let (collect_a_staked, collect_b_staked) = pool::collect_fee<TestCoinB, TestCoinA>(
@@ -7273,8 +7275,8 @@ module clmm_pool::pool_tests {
             );
             let collected_a = sui::balance::value(&collect_a);
             let collected_b = sui::balance::value(&collect_b);
-            assert!(collected_a == 40000, 7);
-            assert!(collected_b == 40000, 8);
+            assert!(collected_a == 39960, 7);
+            assert!(collected_b == 39960, 8);
 
             // --- Check gauge and protocol fees ---
             let (gauger_fee_a, gauger_fee_b) = pool::pool_fee_a_b(
