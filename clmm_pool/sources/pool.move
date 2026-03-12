@@ -1432,7 +1432,6 @@ module clmm_pool::pool {
             a2b,
             by_amount_in,
             amount,
-            false,
             0
         )
     }
@@ -1477,7 +1476,6 @@ module clmm_pool::pool {
             a2b,
             by_amount_in,
             amount,
-            true,
             ref_fee_rate
         )
     }
@@ -1515,7 +1513,6 @@ module clmm_pool::pool {
         a2b: bool,
         by_amount_in: bool,
         amount: u64,
-        with_partner: bool,
         ref_fee_rate: u64
     ): CalculatedSwapResult {
         let mut current_sqrt_price = pool.current_sqrt_price;
@@ -1573,45 +1570,30 @@ module clmm_pool::pool {
 
                 let mut gauge_fee = 0;
                 let mut protocol_fee = 0;
-                let mut ref_fee = 0;
 
-                if (with_partner) {
-                    ref_fee = integer_mate::full_math_u64::mul_div_ceil(
-                        fee_amount,
-                        ref_fee_rate,
-                        clmm_pool::config::protocol_fee_rate_denom()
-                    );
-                    let remaining_fee = fee_amount - ref_fee;
-                    if (remaining_fee > 0) {
-                        let protocol_fee_amount = integer_mate::full_math_u64::mul_div_ceil(
-                            remaining_fee,
-                            clmm_pool::config::protocol_fee_rate(global_config),
-                            clmm_pool::config::protocol_fee_rate_denom()
-                        );
-                        protocol_fee = protocol_fee_amount;
-                        let fee_after_protocol = remaining_fee - protocol_fee_amount;
-                        if (fee_after_protocol > 0) {
-                            let (_, gauge_fee_amount) = calculate_fees(
-                                fee_after_protocol,
-                                pool.liquidity,
-                                pool.fullsail_distribution_staked_liquidity,
-                                unstaked_fee_rate
-                            );
-                            gauge_fee = gauge_fee_amount;
-                        };
-                    };
-                } else {
-                    let protocol_fee = integer_mate::full_math_u64::mul_div_ceil(
-                        fee_amount,
+                let ref_fee = integer_mate::full_math_u64::mul_div_ceil(
+                    fee_amount,
+                    ref_fee_rate,
+                    clmm_pool::config::protocol_fee_rate_denom()
+                );
+                let remaining_fee = fee_amount - ref_fee;
+                if (remaining_fee > 0) {
+                   let protocol_fee_amount = integer_mate::full_math_u64::mul_div_ceil(
+                        remaining_fee,
                         clmm_pool::config::protocol_fee_rate(global_config),
                         clmm_pool::config::protocol_fee_rate_denom()
                     );
-                    (_, gauge_fee) = calculate_fees(
-                        fee_amount - protocol_fee,
-                        pool.liquidity,
-                        pool.fullsail_distribution_staked_liquidity,
-                        unstaked_fee_rate
-                    );
+                    protocol_fee = protocol_fee_amount;
+                    let fee_after_protocol = remaining_fee - protocol_fee_amount;
+                    if (fee_after_protocol > 0) {
+                        let (_, gauge_fee_amount) = calculate_fees(
+                            fee_after_protocol,
+                            current_liquidity,
+                            staked_liquidity,
+                            unstaked_fee_rate
+                        );
+                        gauge_fee = gauge_fee_amount;
+                    };
                 };
         
                 update_swap_result(&mut swap_result, amount_in, amount_out, fee_amount, protocol_fee, ref_fee, gauge_fee);
