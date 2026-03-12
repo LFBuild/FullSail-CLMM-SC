@@ -2828,6 +2828,111 @@ module clmm_pool::position_tests {
     }
 
     #[test]
+    /// Test fee_growth overflow (wrapping arithmetic).
+    /// Verifies that when fee_growth_inside wraps around u128::MAX, fees are still computed correctly.
+    ///
+    /// Setup:
+    ///   - Position with liquidity = 1 << 64
+    ///   - Stake at growth=(0, 0) — no accrual since growth_inside starts at 0
+    ///   - Unstake at growth=(MAX-500, MAX-300) — staked guard skips accrual, just snapshots fee_growth_inside
+    ///   - Now fee_growth_inside = (MAX-500, MAX-300)
+    ///
+    /// Action: update_and_reset_fee with fee_growth = (499, 299)
+    ///   - This simulates fee_growth_global having wrapped around u128::MAX
+    ///
+    /// Expected (correct behavior with wrapping_sub):
+    ///   - delta_a = wrapping_sub(499, MAX-500) = 1000
+    ///   - delta_b = wrapping_sub(299, MAX-300) = 600
+    ///   - fee_owned_a = mul_shr(1<<64, 1000, 64) = 1000
+    ///   - fee_owned_b = mul_shr(1<<64, 600, 64) = 600
+    fun test_fee_growth_global_overflow() {
+        let admin = @0x123;
+        let mut scenario = test_scenario::begin(admin);
+
+        let mut test_manager = TestPositionManager {
+            id: sui::object::new(scenario.ctx()),
+            position_manager: position::new(1, scenario.ctx())
+        };
+        test_scenario::next_tx(&mut scenario, admin);
+
+        // Create position
+        let mut position = position::open_position<type_name::TypeName, type_name::TypeName>(
+            &mut test_manager.position_manager,
+            object::id_from_address(admin),
+            1,
+            std::string::utf8(b"https://fullsailfinance.io/pool/1"),
+            integer_mate::i32::neg_from(10),
+            i32::from(10),
+            test_scenario::ctx(&mut scenario)
+        );
+        let position_id = object::id(&position);
+        transfer::public_transfer(position, admin);
+
+        // Add liquidity = 1 << 64
+        test_scenario::next_tx(&mut scenario, admin);
+        let mut position = scenario.take_from_sender<position::Position>();
+        position::increase_liquidity(
+            &mut test_manager.position_manager,
+            &mut position,
+            1 << 64,
+            0, 0, 0, vector::empty<u128>(), 0
+        );
+        transfer::public_transfer(position, admin);
+
+        // Stake at growth=(0, 0) — position is unstaked, fee_growth_inside=(0,0), delta=0, no accrual
+        position::mark_position_staked(&mut test_manager.position_manager, position_id, 0, 0, true);
+
+        // Verify staked, fee_owned = (0, 0)
+        let pi = position::borrow_position_info(&test_manager.position_manager, position_id);
+        assert!(position::is_staked(pi), 1);
+        let (fo_a, fo_b) = position::info_fee_owned(pi);
+        assert!(fo_a == 0, 2);
+        assert!(fo_b == 0, 3);
+
+        // Unstake at growth=(MAX-500, MAX-300) — staked guard skips accrual, just snapshots
+        let max = 340282366920938463463374607431768211455u128; // u128::MAX
+        position::mark_position_staked(
+            &mut test_manager.position_manager, position_id,
+            max - 500, max - 300, false
+        );
+
+        // Verify unstaked, fee_growth_inside = (MAX-500, MAX-300), fee_owned still (0, 0)
+        let pi = position::borrow_position_info(&test_manager.position_manager, position_id);
+        assert!(!position::is_staked(pi), 4);
+        let (fg_a, fg_b) = position::info_fee_growth_inside(pi);
+        assert!(fg_a == max - 500, 5);
+        assert!(fg_b == max - 300, 6);
+        let (fo_a, fo_b) = position::info_fee_owned(pi);
+        assert!(fo_a == 0, 7);
+        assert!(fo_b == 0, 8);
+
+        // update_and_reset_fee with growth=(499, 299) — simulates overflow wrap
+        // wrapping_sub(499, MAX-500) = 499 - (MAX-500) mod 2^128 = 499 + 501 = 1000
+        // wrapping_sub(299, MAX-300) = 299 - (MAX-300) mod 2^128 = 299 + 301 = 600
+        // fee_owned_a = mul_shr(1<<64, 1000, 64) = 1000
+        // fee_owned_b = mul_shr(1<<64, 600, 64) = 600
+        let (reset_a, reset_b) = position::update_and_reset_fee(
+            &mut test_manager.position_manager, position_id, 499, 299
+        );
+        assert!(reset_a == 1000, 9);
+        assert!(reset_b == 600, 10);
+
+        // fee_owned reset to zero
+        let pi = position::borrow_position_info(&test_manager.position_manager, position_id);
+        let (fo_a, fo_b) = position::info_fee_owned(pi);
+        assert!(fo_a == 0, 11);
+        assert!(fo_b == 0, 12);
+
+        // fee_growth_inside updated to (499, 299)
+        let (fg_a, fg_b) = position::info_fee_growth_inside(pi);
+        assert!(fg_a == 499, 13);
+        assert!(fg_b == 299, 14);
+
+        transfer::public_transfer(test_manager, admin);
+        test_scenario::end(scenario);
+    }
+
+    #[test]
     /// Test update_and_reset_fullsail_distribution function
     /// Verifies that:
     /// 1. Updates fullsail distribution growth correctly using Q64.64 fixed-point format
