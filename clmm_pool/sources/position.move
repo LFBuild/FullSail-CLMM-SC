@@ -787,9 +787,9 @@ module clmm_pool::position {
         staked: bool
     ) {
         let position_info = borrow_mut_position_info(position_manager, position_id);
+        assert!(position_info.fullsail_distribution_staked != staked, EStakingStatusUnchanged);
         update_fee_internal(position_info, fee_growth_a, fee_growth_b);
         update_fullsail_distribution_internal(position_info, fullsail_growth);
-        assert!(position_info.fullsail_distribution_staked != staked, EStakingStatusUnchanged);
         position_info.fullsail_distribution_staked = staked;
         let stake_event = StakePositionEvent {
             position_id: position_info.position_id,
