@@ -1671,16 +1671,16 @@ module clmm_pool::position {
             assert!(std::string::utf8(b"{coin_type_b}") == *coin_b_field, 95);
 
             let link_field = sui::vec_map::get(display_fields, &std::string::utf8(b"link"));
-            assert!(std::string::utf8(b"https://app.fullsailfinance.io/position?chain=sui&id={id}") == *link_field, 6);
+            assert!(std::string::utf8(b"https://app.fullsail.finance/liquidity/{pool}/positions/{id}") == *link_field, 6);
 
             let image_url_field = sui::vec_map::get(display_fields, &std::string::utf8(b"image_url"));
-            assert!(std::string::utf8(b"{url}") == *image_url_field, 7);
+            assert!(std::string::utf8(b"https://app.fullsail.finance/static_files/position.png") == *image_url_field, 7);
 
             let description_field = sui::vec_map::get(display_fields, &std::string::utf8(b"description"));
             assert!(std::string::utf8(b"{description}") == *description_field, 8);
 
             let project_url_field = sui::vec_map::get(display_fields, &std::string::utf8(b"project_url"));
-            assert!(std::string::utf8(b"https://fullsailfinance.io") == *project_url_field, 9);
+            assert!(std::string::utf8(b"https://fullsail.finance") == *project_url_field, 9);
 
             let creator_field = sui::vec_map::get(display_fields, &std::string::utf8(b"creator"));
             assert!(std::string::utf8(b"FULLSAIL") == *creator_field, 10);
