@@ -7870,7 +7870,7 @@ module clmm_pool::pool_tests {
 
             // === KEY STEP: Set fee_growth_global_a near u128::MAX before adding liquidity ===
             // fee_growth_global_b stays at 0 as a control (no overflow).
-            let max = 340282366920938463463374607431768211455u128; // u128::MAX
+            let max = 0xffffffffffffffffffffffffffffffff; // u128::MAX
             pool::test_set_fee_growth_global<TestCoinB, TestCoinA>(&mut pool, max - 887, 0);
 
             // Create position — ticks initialize with fee_growth_outside from current fee_growth_global
@@ -7954,6 +7954,173 @@ module clmm_pool::pool_tests {
             sui::coin::from_balance(protocol_fee_b, scenario.ctx()).burn_for_testing();
             transfer::public_transfer(position, admin);
             transfer::public_transfer(pool, admin);
+            transfer::public_transfer(gauge_cap, admin);
+            transfer::public_transfer(create_gauge_cap, admin);
+            test_scenario::return_shared(global_config);
+            test_scenario::return_shared(stats);
+            test_scenario::return_shared(price_provider);
+            test_scenario::return_shared(vault);
+            clock::destroy_for_testing(clock);
+        };
+
+        test_scenario::end(scenario);
+    }
+
+    #[test]
+    /// AUDIT-01: Verify fullsail_distribution_growth_global wraps on overflow
+    /// instead of aborting. Sets growth_global near u128::MAX, then triggers
+    /// a distribution update that pushes it past MAX via wrapping_add.
+    ///
+    /// Setup:
+    ///   - Pool with staked liquidity = 1000
+    ///   - fullsail_distribution_growth_global = u128::MAX - 100
+    ///   - distribution_reserve = 100000, rate = 1000 << 64
+    ///   - Advance clock by 1 second
+    ///
+    /// Expected:
+    ///   - Distribution of 1000 tokens (rate * 1s / Q64 = 1000)
+    ///   - growth_delta = 1000 * Q64 / 1000 = Q64 = 1 << 64
+    ///   - growth_global = wrapping_add(MAX - 100, 1 << 64) wraps past MAX
+    ///   - Transaction succeeds (does not abort)
+    fun test_fullsail_distribution_growth_global_wrapping_add_overflow() {
+        let admin = @0x1;
+        let mut scenario = test_scenario::begin(admin);
+
+        // Initialize factory and config
+        {
+            factory::test_init(scenario.ctx());
+            config::test_init(scenario.ctx());
+            stats::init_test(scenario.ctx());
+            price_provider::init_test(scenario.ctx());
+            gauge_cap::gauge_cap::init_test(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
+        };
+
+        // Add fee tier
+        scenario.next_tx(admin);
+        {
+            let admin_cap = scenario.take_from_sender<config::AdminCap>();
+            let mut global_config = scenario.take_shared<config::GlobalConfig>();
+            config::add_fee_tier(&mut global_config, 1, 1000, scenario.ctx());
+            test_scenario::return_shared(global_config);
+            transfer::public_transfer(admin_cap, admin);
+        };
+
+        scenario.next_tx(admin);
+        {
+            let global_config = scenario.take_shared<config::GlobalConfig>();
+            let mut clock = clock::create_for_testing(scenario.ctx());
+            let create_gauge_cap = scenario.take_from_sender<gauge_cap::gauge_cap::CreateCap>();
+            let stats = scenario.take_shared<stats::Stats>();
+            let price_provider = scenario.take_shared<price_provider::PriceProvider>();
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
+
+            // Create pool
+            let mut pool = pool::new<TestCoinB, TestCoinA>(
+                1,
+                18584142135623730951,
+                1000,
+                std::string::utf8(b""),
+                0,
+                @0x2,
+                @0x3,
+                true,
+                &clock,
+                scenario.ctx()
+            );
+
+            // Create gauge cap
+            let gauge_cap = gauge_cap::gauge_cap::create_gauge_cap(
+                &create_gauge_cap,
+                sui::object::id(&pool),
+                sui::object::id(&pool),
+                scenario.ctx()
+            );
+
+            // Initialize fullsail distribution gauge
+            pool::init_fullsail_distribution_gauge<TestCoinB, TestCoinA>(&mut pool, &gauge_cap);
+
+            // Sync distribution: rate = 1000 << 64, reserve = 100000
+            pool::sync_fullsail_distribution_reward<TestCoinB, TestCoinA>(
+                &mut pool,
+                &gauge_cap,
+                1000 << 64,
+                100000,
+                100,
+                &clock
+            );
+
+            // Set growth_global near u128::MAX so the next update wraps
+            let max = 0xffffffffffffffffffffffffffffffff; // u128::MAX
+            pool::test_set_fullsail_distribution<TestCoinB, TestCoinA>(
+                &mut pool,
+                max - 100, // growth_global near MAX
+            );
+
+            // Add liquidity and stake it
+            let mut position = pool::open_position<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut pool,
+                100,
+                200,
+                scenario.ctx()
+            );
+            let receipt = pool::add_liquidity<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut vault,
+                &mut pool,
+                &mut position,
+                1000,
+                &clock
+            );
+            pool::stake_in_fullsail_distribution<TestCoinB, TestCoinA>(
+                &mut pool,
+                &gauge_cap,
+                &position,
+                &clock
+            );
+
+            // Verify growth_global is near MAX
+            let growth_before = pool::get_fullsail_distribution_growth_global<TestCoinB, TestCoinA>(&pool);
+            assert!(growth_before == max - 100, 1);
+
+            // Advance clock by 1 second (1000 ms)
+            clock::increment_for_testing(&mut clock, 1000);
+
+            // Update growth global — this would abort without wrapping_add
+            // Distribution: rate * 1s / Q64 = 1000 tokens
+            // growth_delta = 1000 * Q64 / 1000 = Q64 = 1 << 64
+            // wrapping_add(MAX - 100, 1 << 64) wraps past MAX
+            pool::update_fullsail_distribution_growth_global<TestCoinB, TestCoinA>(
+                &mut pool,
+                &gauge_cap,
+                &clock
+            );
+
+            // Verify growth_global wrapped (new value < old value)
+            let growth_after = pool::get_fullsail_distribution_growth_global<TestCoinB, TestCoinA>(&pool);
+            assert!(growth_after < growth_before, 2);
+
+            // Verify the wrapped value is correct:
+            // wrapping_add(MAX - 100, 1 << 64) = (MAX - 100 + 1 << 64) mod 2^128
+            // = 1 << 64 - 101
+            let expected = (1u128 << 64) - 101;
+            assert!(growth_after == expected, 3);
+
+            // Verify the position correctly earns fullsail distribution after the wrap.
+            // 1 second passed and rate is a 1000 tokens per second
+            let position_id = sui::object::id(&position);
+            let fullsail_earned = pool::calculate_and_update_fullsail_distribution<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut pool,
+                position_id
+            );
+            assert!(fullsail_earned == 1000, 4);
+
+            // Cleanup
+            pool::destroy_receipt<TestCoinB, TestCoinA>(receipt);
+            transfer::public_transfer(pool, admin);
+            transfer::public_transfer(position, admin);
             transfer::public_transfer(gauge_cap, admin);
             transfer::public_transfer(create_gauge_cap, admin);
             test_scenario::return_shared(global_config);

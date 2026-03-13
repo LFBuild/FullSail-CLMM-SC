@@ -2890,7 +2890,7 @@ module clmm_pool::position_tests {
         assert!(fo_b == 0, 3);
 
         // Unstake at growth=(MAX-500, MAX-300) — staked guard skips accrual, just snapshots
-        let max = 340282366920938463463374607431768211455u128; // u128::MAX
+        let max = 0xffffffffffffffffffffffffffffffff; // u128::MAX
         position::mark_position_staked(
             &mut test_manager.position_manager, position_id,
             max - 500, max - 300, 0, false
@@ -3536,6 +3536,83 @@ module clmm_pool::position_tests {
 
         // fullsail_distribution_owned should be zero since position was not staked
         assert!(position::info_fullsail_distribution_owned(pi) == 100000, 3);
+
+        transfer::public_transfer(position, admin);
+        transfer::public_transfer(test_manager, admin);
+        test_scenario::end(scenario);
+    }
+
+    #[test]
+    /// AUDIT-01: Verify fullsail distribution growth overflow (wrapping arithmetic).
+    /// When fullsail_distribution_growth_global wraps around u128::MAX,
+    /// the position-level wrapping_sub must still compute the correct delta.
+    ///
+    /// Setup:
+    ///   - Position with liquidity = 1 << 64
+    ///   - Add liquidity with fullsail_growth = (MAX - 500), snapshotting growth_inside
+    ///   - Stake the position at the same growth
+    ///
+    /// Action: update_and_reset_fullsail_distribution with fullsail_growth = 499
+    ///   - This simulates fullsail_distribution_growth_global having wrapped around u128::MAX
+    ///
+    /// Expected (correct behavior with wrapping_sub):
+    ///   - delta = wrapping_sub(499, MAX - 500) = 1000
+    ///   - fullsail_owned = mul_shr(1 << 64, 1000, 64) = 1000
+    fun test_fullsail_distribution_growth_overflow() {
+        let admin = @0x123;
+        let mut scenario = test_scenario::begin(admin);
+
+        let mut test_manager = TestPositionManager {
+            id: sui::object::new(scenario.ctx()),
+            position_manager: position::new(1, scenario.ctx())
+        };
+        test_scenario::next_tx(&mut scenario, admin);
+
+        let max = 0xffffffffffffffffffffffffffffffff; // u128::MAX
+
+        // Create position
+        let mut position = position::open_position<type_name::TypeName, type_name::TypeName>(
+            &mut test_manager.position_manager,
+            object::id_from_address(admin),
+            1,
+            std::string::utf8(b"https://fullsailfinance.io/pool/1"),
+            integer_mate::i32::neg_from(10),
+            i32::from(10),
+            test_scenario::ctx(&mut scenario)
+        );
+        let position_id = object::id(&position);
+
+        // Add liquidity = 1 << 64, with fullsail_growth = MAX - 500
+        // This snapshots fullsail_distribution_growth_inside to MAX - 500
+        position::increase_liquidity(
+            &mut test_manager.position_manager,
+            &mut position,
+            1 << 64,
+            0, 0, 0, vector::empty<u128>(), max - 500
+        );
+
+        // Verify growth_inside is MAX - 500
+        let pi = position::borrow_position_info(&test_manager.position_manager, position_id);
+        assert!(position::info_fullsail_distribution_growth_inside(pi) == max - 500, 1);
+        assert!(position::info_fullsail_distribution_owned(pi) == 0, 2);
+
+        // Stake at the same fullsail_growth — no delta accrued
+        position::mark_position_staked(
+            &mut test_manager.position_manager, position_id,
+            0, 0, max - 500, true
+        );
+
+        // Verify still 0 owned
+        let pi = position::borrow_position_info(&test_manager.position_manager, position_id);
+        assert!(position::info_fullsail_distribution_owned(pi) == 0, 3);
+
+        // Now simulate growth wrapping: update with fullsail_growth = 499
+        // wrapping_sub(499, MAX - 500) = 499 + 501 = 1000
+        // fullsail_owned = mul_shr(1 << 64, 1000, 64) = 1000
+        let fullsail_owned = position::update_and_reset_fullsail_distribution(
+            &mut test_manager.position_manager, position_id, 499
+        );
+        assert!(fullsail_owned == 1000, 4);
 
         transfer::public_transfer(position, admin);
         transfer::public_transfer(test_manager, admin);

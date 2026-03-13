@@ -4179,5 +4179,13 @@ module clmm_pool::pool {
         pool.fee_growth_global_a = fee_growth_global_a;
         pool.fee_growth_global_b = fee_growth_global_b;
     }
+
+    #[test_only]
+    public fun test_set_fullsail_distribution<CoinTypeA, CoinTypeB>(
+        pool: &mut Pool<CoinTypeA, CoinTypeB>,
+        growth_global: u128,
+    ) {
+        pool.fullsail_distribution_growth_global = growth_global;
+    }
 }
 
