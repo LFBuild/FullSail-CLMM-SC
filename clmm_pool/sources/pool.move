@@ -3272,12 +3272,14 @@ module clmm_pool::pool {
             clock
         );
 
-        let (fee_growth_a, fee_growth_b) = get_fee_in_tick_range<CoinTypeA, CoinTypeB>(pool, tick_lower, tick_upper);
+        let (fee_growth_a, fee_growth_b, _rewards_growth, _points_growth, fullsail_growth) =
+            get_all_growths_in_tick_range<CoinTypeA, CoinTypeB>(pool, tick_lower, tick_upper);
         clmm_pool::position::mark_position_staked(
             &mut pool.position_manager,
             position_id,
             fee_growth_a,
             fee_growth_b,
+            fullsail_growth,
             true
         );
     }
@@ -3679,12 +3681,14 @@ module clmm_pool::pool {
             );
         };
 
-        let (fee_growth_a, fee_growth_b) = get_fee_in_tick_range<CoinTypeA, CoinTypeB>(pool, tick_lower, tick_upper);
+        let (fee_growth_a, fee_growth_b, _rewards_growth, _points_growth, fullsail_growth) =
+            get_all_growths_in_tick_range<CoinTypeA, CoinTypeB>(pool, tick_lower, tick_upper);
         clmm_pool::position::mark_position_staked(
             &mut pool.position_manager,
             position_id,
             fee_growth_a,
             fee_growth_b,
+            fullsail_growth,
             false
         );
     }
@@ -3805,10 +3809,13 @@ module clmm_pool::pool {
                 };
                 pool.fullsail_distribution_reserve = pool.fullsail_distribution_reserve - actual_distribution;
                 if (pool.fullsail_distribution_staked_liquidity > 0) {
-                    pool.fullsail_distribution_growth_global = pool.fullsail_distribution_growth_global + integer_mate::full_math_u128::mul_div_floor(
-                        actual_distribution as u128,
-                        Q64,
-                        pool.fullsail_distribution_staked_liquidity
+                    pool.fullsail_distribution_growth_global = integer_mate::math_u128::wrapping_add(
+                        pool.fullsail_distribution_growth_global,
+                        integer_mate::full_math_u128::mul_div_floor(
+                            actual_distribution as u128,
+                            Q64,
+                            pool.fullsail_distribution_staked_liquidity
+                        )
                     );
                 } else {
                     pool.fullsail_distribution_rollover = pool.fullsail_distribution_rollover + actual_distribution;

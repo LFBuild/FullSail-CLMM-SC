@@ -604,6 +604,11 @@ module clmm_pool::position {
         position_info.fullsail_distribution_owned
     }
 
+    /// Returns the accumulated FULLSAIL distribution growth inside the position's range.
+    public fun info_fullsail_distribution_growth_inside(position_info: &PositionInfo): u128 {
+        position_info.fullsail_distribution_growth_inside
+    }
+
     /// Returns the accumulated points growth inside the position's range.
     /// 
     /// # Arguments
@@ -774,14 +779,16 @@ module clmm_pool::position {
     /// * If the position ID does not match (error code: EPositionNotFound)
     /// * If the new staking status is the same as the current status (error code: EStakingStatusUnchanged)
     public(package) fun mark_position_staked(
-        position_manager: &mut PositionManager, 
+        position_manager: &mut PositionManager,
         position_id: sui::object::ID,
         fee_growth_a: u128,
         fee_growth_b: u128,
+        fullsail_growth: u128,
         staked: bool
     ) {
         let position_info = borrow_mut_position_info(position_manager, position_id);
         update_fee_internal(position_info, fee_growth_a, fee_growth_b);
+        update_fullsail_distribution_internal(position_info, fullsail_growth);
         assert!(position_info.fullsail_distribution_staked != staked, EStakingStatusUnchanged);
         position_info.fullsail_distribution_staked = staked;
         let stake_event = StakePositionEvent {
@@ -1396,14 +1403,17 @@ module clmm_pool::position {
     /// # Abort Conditions
     /// * If adding the FULLSAIL delta would cause overflow (error code: EFullsailDistributionOverflow)
     fun update_fullsail_distribution_internal(position_info: &mut PositionInfo, fullsail_growth: u128) {
-        let fullsail_delta = integer_mate::full_math_u128::mul_shr(
-            position_info.liquidity,
-            integer_mate::math_u128::wrapping_sub(
-                fullsail_growth,
-                position_info.fullsail_distribution_growth_inside
-            ),
-            64
-        ) as u64;
+        let mut fullsail_delta = 0;
+        if (position_info.fullsail_distribution_staked) {
+            fullsail_delta = integer_mate::full_math_u128::mul_shr(
+                position_info.liquidity,
+                integer_mate::math_u128::wrapping_sub(
+                    fullsail_growth,
+                    position_info.fullsail_distribution_growth_inside
+                ),
+                64
+            ) as u64;
+        };
         assert!(
             integer_mate::math_u64::add_check(
                 position_info.fullsail_distribution_owned,
@@ -2020,7 +2030,7 @@ module clmm_pool::position {
             0, // points_owned
             0, // points_growth_inside
             std::vector::empty<PositionReward>(), // rewards
-            false, // fullsail_distribution_staked
+            true, // fullsail_distribution_staked
             0, // fullsail_distribution_growth_inside
             0 // fullsail_distribution_owned
         );

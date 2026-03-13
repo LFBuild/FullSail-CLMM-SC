@@ -2261,14 +2261,14 @@ module clmm_pool::position_tests {
         let position_id = object::id(&position);
 
         // Mark position as staked (fee_growth_a=0, fee_growth_b=0 since no fees accrued)
-        position::mark_position_staked(&mut test_manager.position_manager, position_id, 0, 0, true);
+        position::mark_position_staked(&mut test_manager.position_manager, position_id, 0, 0, 0, true);
 
         // Verify position is staked
         let position_info = position::borrow_position_info(&test_manager.position_manager, position_id);
         assert!(position::is_staked(position_info), 1);
 
         // Mark position as unstaked
-        position::mark_position_staked(&mut test_manager.position_manager, position_id, 0, 0, false);
+        position::mark_position_staked(&mut test_manager.position_manager, position_id, 0, 0, 0, false);
 
         // Verify position is not staked
         let position_info = position::borrow_position_info(&test_manager.position_manager, position_id);
@@ -2333,7 +2333,7 @@ module clmm_pool::position_tests {
 
         // --- Stake with fee_growth = (500, 300) ---
         // Position is unstaked, so update_fee_internal accrues fees first
-        position::mark_position_staked(&mut test_manager.position_manager, position_id, 500, 300, true);
+        position::mark_position_staked(&mut test_manager.position_manager, position_id, 500, 300, 0, true);
 
         let position_info = position::borrow_position_info(&test_manager.position_manager, position_id);
         assert!(position::is_staked(position_info), 1);
@@ -2350,7 +2350,7 @@ module clmm_pool::position_tests {
 
         // --- Unstake with fee_growth = (800, 600) ---
         // Position is staked, so update_fee_internal does NOT accrue fees (staked guard)
-        position::mark_position_staked(&mut test_manager.position_manager, position_id, 800, 600, false);
+        position::mark_position_staked(&mut test_manager.position_manager, position_id, 800, 600, 0, false);
 
         let position_info = position::borrow_position_info(&test_manager.position_manager, position_id);
         assert!(!position::is_staked(position_info), 6);
@@ -2387,7 +2387,7 @@ module clmm_pool::position_tests {
         let fake_position_id = object::id_from_address(@0x2);
 
         // Try to mark non-existent position as staked (should fail)
-        position::mark_position_staked(&mut test_manager.position_manager, fake_position_id, 0, 0, true);
+        position::mark_position_staked(&mut test_manager.position_manager, fake_position_id, 0, 0, 0, true);
 
         transfer::public_transfer(test_manager, admin);
         test_scenario::end(scenario);
@@ -2429,10 +2429,10 @@ module clmm_pool::position_tests {
         let position_id = object::id(&position);
 
         // Mark position as staked
-        position::mark_position_staked(&mut test_manager.position_manager, position_id, 0, 0, true);
+        position::mark_position_staked(&mut test_manager.position_manager, position_id, 0, 0, 0, true);
 
         // Try to mark position as staked again (should fail)
-        position::mark_position_staked(&mut test_manager.position_manager, position_id, 0, 0, true);
+        position::mark_position_staked(&mut test_manager.position_manager, position_id, 0, 0, 0, true);
 
         // Transfer objects
         transfer::public_transfer(position, admin);
@@ -2794,7 +2794,7 @@ module clmm_pool::position_tests {
         // Stake at fee_growth = (500, 300)
         // update_fee_internal runs while unstaked: accrues 100*500=50000, 100*300=30000
         // fee_owned becomes (100+50000, 200+30000) = (50100, 30200)
-        position::mark_position_staked(&mut test_manager.position_manager, position_id, 500, 300, true);
+        position::mark_position_staked(&mut test_manager.position_manager, position_id, 500, 300, 0, true);
 
         // Verify state after staking
         let pi = position::borrow_position_info(&test_manager.position_manager, position_id);
@@ -2880,7 +2880,7 @@ module clmm_pool::position_tests {
         transfer::public_transfer(position, admin);
 
         // Stake at growth=(0, 0) — position is unstaked, fee_growth_inside=(0,0), delta=0, no accrual
-        position::mark_position_staked(&mut test_manager.position_manager, position_id, 0, 0, true);
+        position::mark_position_staked(&mut test_manager.position_manager, position_id, 0, 0, 0, true);
 
         // Verify staked, fee_owned = (0, 0)
         let pi = position::borrow_position_info(&test_manager.position_manager, position_id);
@@ -2893,7 +2893,7 @@ module clmm_pool::position_tests {
         let max = 340282366920938463463374607431768211455u128; // u128::MAX
         position::mark_position_staked(
             &mut test_manager.position_manager, position_id,
-            max - 500, max - 300, false
+            max - 500, max - 300, 0, false
         );
 
         // Verify unstaked, fee_growth_inside = (MAX-500, MAX-300), fee_owned still (0, 0)
@@ -2980,6 +2980,9 @@ module clmm_pool::position_tests {
             std::vector::empty<u128>(),
             0
         );
+
+        // Mark position as staked so fullsail distribution accrues
+        position::mark_position_staked(&mut test_manager.position_manager, position_id, 0, 0, 0, true);
 
         // First update to set initial growth
         let _initial_fullsail = position::update_fullsail_distribution(&mut test_manager.position_manager, position_id, 1 << 64); // 1.0 in Q64.64
@@ -3144,6 +3147,8 @@ module clmm_pool::position_tests {
             0  // fullsail_growth
         );
 
+        position::mark_position_staked(&mut test_manager.position_manager, position_id, 0, 0, 0, true);
+        
         // Update points with a non-zero growth value in Q64.64 format
         let points_growth = 1000 << 64;
         let points_owned = position::update_points(
@@ -3467,5 +3472,73 @@ module clmm_pool::position_tests {
         };
 
         scenario.end();
+    }
+
+    // ========== AUDIT TESTS ==========
+
+    #[test]
+    /// AUDIT-11: Verify that staking snapshots fullsail_distribution_growth_inside.
+    /// Without the snapshot, a position could retroactively claim fullsail rewards
+    /// from before it was staked.
+    fun test_audit_11_staking_snapshots_fullsail_growth() {
+        let mut scenario = test_scenario::begin(@0x1);
+        let admin = @0x1;
+        scenario.next_tx(admin);
+
+        let mut test_manager = TestPositionManager {
+            id: sui::object::new(scenario.ctx()),
+            position_manager: position::new(1, scenario.ctx())
+        };
+        let pool_id = object::id_from_address(admin);
+
+        let mut position = position::open_position<type_name::TypeName, type_name::TypeName>(
+            &mut test_manager.position_manager,
+            pool_id, 1, string::utf8(b""),
+            i32::from(0), i32::from(10),
+            scenario.ctx()
+        );
+        let position_id = object::id(&position);
+
+        // Add liquidity with fullsail_growth = 0
+        position::increase_liquidity(
+            &mut test_manager.position_manager,
+            &mut position,
+            100 << 64,
+            0, 0, 0, vector::empty<u128>(), 0
+        );
+
+        // Verify initial fullsail_distribution_growth_inside = 0
+        let pi = position::borrow_position_info(&test_manager.position_manager, position_id);
+        assert!(position::info_fullsail_distribution_growth_inside(pi) == 0, 1);
+
+        // Stake with fullsail_growth = 1000 (simulating that other staked positions
+        // have already earned fullsail distribution, so growth_in_range = 1000)
+        position::mark_position_staked(
+            &mut test_manager.position_manager, position_id,
+            0, 0, 1000, true
+        );
+
+        let pi = position::borrow_position_info(&test_manager.position_manager, position_id);
+        assert!(position::info_fullsail_distribution_growth_inside(pi) == 1000, 2);
+
+        // fullsail_distribution_owned should be zero since position was not staked
+        assert!(position::info_fullsail_distribution_owned(pi) == 0, 3);
+
+        // Unstake with fullsail_growth = 2000 (simulating that other staked positions
+        // have already earned fullsail distribution, so growth_in_range = 2000)
+        position::mark_position_staked(
+            &mut test_manager.position_manager, position_id,
+            0, 0, 2000, false
+        );
+
+        let pi = position::borrow_position_info(&test_manager.position_manager, position_id);
+        assert!(position::info_fullsail_distribution_growth_inside(pi) == 2000, 2);
+
+        // fullsail_distribution_owned should be zero since position was not staked
+        assert!(position::info_fullsail_distribution_owned(pi) == 100000, 3);
+
+        transfer::public_transfer(position, admin);
+        transfer::public_transfer(test_manager, admin);
+        test_scenario::end(scenario);
     }
 }
