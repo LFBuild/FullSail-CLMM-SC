@@ -2072,4 +2072,312 @@ module clmm_pool::staked_liquidity_tests {
 
         test_scenario::end(scenario);
     }
+
+    #[test]
+    /// Test that calculate_swap_result matches actual flash_swap results in a scenario
+    /// with overlapping positions, staked liquidity, and tick crossings.
+    ///
+    /// Setup (identical to test_stake_in_fullsail_distribution_overlapping_positions_cross_by_swap):
+    ///   - Pool: tick_spacing=1, fee_rate=1000 (0.1%), current_tick=148
+    ///   - Position 0: full-range, liquidity=1B, staked (base position)
+    ///   - Position 1: ticks (100, 200), liquidity=200000, unstaked
+    ///   - Position 2: ticks (200, 300), liquidity=100000, staked
+    ///
+    /// For each of the 4 swaps:
+    ///   1. Call calculate_swap_result (read-only simulation)
+    ///   2. Execute actual flash_swap
+    ///   3. Assert: amount_in, amount_out, fee_amount, ref_fee_amount,
+    ///      protocol_fee_amount, gauge_fee_amount, after_sqrt_price all match
+    fun test_calculate_swap_result_matches_actual_swap_with_overlapping_positions() {
+        let admin = @0x1;
+        let user = @0x2;
+        let mut scenario = test_scenario::begin(admin);
+
+        // Initialize factory and config
+        {
+            factory::test_init(scenario.ctx());
+            config::test_init(scenario.ctx());
+            stats::init_test(scenario.ctx());
+            price_provider::init_test(scenario.ctx());
+            gauge_cap::init_test(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
+        };
+
+        // Add fee tier
+        scenario.next_tx(admin);
+        {
+            let admin_cap = scenario.take_from_sender<config::AdminCap>();
+            let mut global_config = scenario.take_shared<config::GlobalConfig>();
+            config::add_fee_tier(&mut global_config, 1, 1000, scenario.ctx());
+            test_scenario::return_shared(global_config);
+            transfer::public_transfer(admin_cap, admin);
+        };
+
+        scenario.next_tx(admin);
+        {
+            let global_config = scenario.take_shared<config::GlobalConfig>();
+            let clock = clock::create_for_testing(scenario.ctx());
+            let create_gauge_cap = scenario.take_from_sender<gauge_cap::CreateCap>();
+            let mut pool = pool::new<TestCoinB, TestCoinA>(
+                1, // tick_spacing
+                18584142135623730951, // current_tick_index = 148
+                1000, // fee_rate
+                std::string::utf8(b""),
+                0,
+                @0x2,
+                @0x3,
+                true,
+                &clock,
+                scenario.ctx()
+            );
+
+            let gauge_cap = gauge_cap::create_gauge_cap(
+                &create_gauge_cap,
+                sui::object::id(&pool),
+                sui::object::id(&pool),
+                scenario.ctx()
+            );
+            pool::init_fullsail_distribution_gauge<TestCoinB, TestCoinA>(&mut pool, &gauge_cap);
+
+            transfer::public_share_object(pool);
+            transfer::public_transfer(gauge_cap, user);
+            transfer::public_transfer(create_gauge_cap, admin);
+            test_scenario::return_shared(global_config);
+            clock::destroy_for_testing(clock);
+        };
+
+        scenario.next_tx(user);
+        {
+            let global_config = scenario.take_shared<config::GlobalConfig>();
+            let clock = clock::create_for_testing(scenario.ctx());
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
+            let mut pool = scenario.take_shared<pool::Pool<TestCoinB, TestCoinA>>();
+            let gauge_cap = scenario.take_from_sender<gauge_cap::GaugeCap>();
+
+            // Position 0: full-range, staked (base position to prevent overflow)
+            let tick_lower_0 = tick_math::min_tick();
+            let tick_upper_0 = tick_math::max_tick();
+            let liquidity_0 = 1_000_000_000;
+            let position0 = open_position_and_add_liquidity<TestCoinB, TestCoinA>(
+                &mut scenario, &global_config, &mut vault, &mut pool,
+                i32::as_u32(tick_lower_0), i32::as_u32(tick_upper_0), liquidity_0, &clock
+            );
+            pool::stake_in_fullsail_distribution<TestCoinB, TestCoinA>(&mut pool, &gauge_cap, &position0, &clock);
+
+            // Position 1: ticks (100, 200), liquidity=200000, unstaked
+            let position1 = open_position_and_add_liquidity<TestCoinB, TestCoinA>(
+                &mut scenario, &global_config, &mut vault, &mut pool,
+                100, 200, 200000, &clock
+            );
+
+            // Position 2: ticks (200, 300), liquidity=100000, staked
+            let position2 = open_position_and_add_liquidity<TestCoinB, TestCoinA>(
+                &mut scenario, &global_config, &mut vault, &mut pool,
+                200, 300, 100000, &clock
+            );
+            pool::stake_in_fullsail_distribution<TestCoinB, TestCoinA>(&mut pool, &gauge_cap, &position2, &clock);
+
+            let price_provider = scenario.take_shared<price_provider::PriceProvider>();
+            let mut stats = scenario.take_shared<stats::Stats>();
+
+            // === Swap 1: b2a, 100M amount_in (crosses tick 200, enters position2 range) ===
+            // Use max_sqrt_price so price limit is non-binding — matches calculate_swap_result
+            {
+                let calc = pool::calculate_swap_result<TestCoinB, TestCoinA>(
+                    &global_config, &pool, false, true, 100_000_000
+                );
+
+                let (out_a, out_b, receipt) = pool::flash_swap<TestCoinB, TestCoinA>(
+                    &global_config, &mut vault, &mut pool,
+                    false, true, 100_000_000, tick_math::max_sqrt_price(),
+                    &mut stats, &price_provider, &clock
+                );
+
+                let actual_amount_out = sui::balance::value(&out_a);
+                let actual_pay_amount = pool::swap_pay_amount(&receipt);
+                let (actual_fee, actual_ref_fee, actual_protocol_fee, actual_gauge_fee) =
+                    pool::fees_amount(&receipt);
+
+                let calc_amount_in = pool::calculated_swap_result_amount_in(&calc);
+                let calc_amount_out = pool::calculated_swap_result_amount_out(&calc);
+                let (calc_fee, calc_ref_fee, calc_protocol_fee, calc_gauge_fee) =
+                    pool::calculated_swap_result_fees_amount(&calc);
+                let calc_after_sqrt_price = pool::calculated_swap_result_after_sqrt_price(&calc);
+
+                // amount_in + fee_amount == pay_amount
+                assert!(calc_amount_in + calc_fee == actual_pay_amount, 101);
+                assert!(calc_amount_out == actual_amount_out, 102);
+                assert!(calc_fee == actual_fee, 103);
+                assert!(calc_ref_fee == actual_ref_fee, 104);
+                assert!(calc_protocol_fee == actual_protocol_fee, 105);
+                assert!(calc_gauge_fee == actual_gauge_fee, 106);
+                assert!(calc_after_sqrt_price == pool::current_sqrt_price(&pool), 107);
+                assert!(!pool::calculated_swap_result_is_exceed(&calc), 108);
+
+                // Repay and cleanup
+                // Pool is Pool<TestCoinB, TestCoinA>, so CoinTypeA=TestCoinB, CoinTypeB=TestCoinA
+                // b2a: input=TestCoinA (CoinTypeB), output=TestCoinB (CoinTypeA)
+                let pay_amount = pool::swap_pay_amount(&receipt);
+                let in_coin = coin::mint_for_testing<TestCoinA>(pay_amount, scenario.ctx());
+                pool::repay_flash_swap(
+                    &global_config, &mut pool,
+                    coin::into_balance(coin::zero<TestCoinB>(scenario.ctx())),
+                    coin::into_balance(in_coin),
+                    receipt
+                );
+                coin::from_balance(out_a, scenario.ctx()).burn_for_testing();
+                sui::balance::destroy_zero(out_b);
+            };
+
+            // === Swap 2: a2b, 100M amount_in (crosses tick 200 back, into position1 range) ===
+            {
+                let calc = pool::calculate_swap_result<TestCoinB, TestCoinA>(
+                    &global_config, &pool, true, true, 100_000_000
+                );
+
+                let (out_a, out_b, receipt) = pool::flash_swap<TestCoinB, TestCoinA>(
+                    &global_config, &mut vault, &mut pool,
+                    true, true, 100_000_000, tick_math::min_sqrt_price(),
+                    &mut stats, &price_provider, &clock
+                );
+
+                // a2b: output=TestCoinA (CoinTypeB) → out_b
+                let actual_amount_out = sui::balance::value(&out_b);
+                let actual_pay_amount = pool::swap_pay_amount(&receipt);
+                let (actual_fee, actual_ref_fee, actual_protocol_fee, actual_gauge_fee) =
+                    pool::fees_amount(&receipt);
+
+                let calc_amount_in = pool::calculated_swap_result_amount_in(&calc);
+                let calc_amount_out = pool::calculated_swap_result_amount_out(&calc);
+                let (calc_fee, calc_ref_fee, calc_protocol_fee, calc_gauge_fee) =
+                    pool::calculated_swap_result_fees_amount(&calc);
+                let calc_after_sqrt_price = pool::calculated_swap_result_after_sqrt_price(&calc);
+
+                assert!(calc_amount_in + calc_fee == actual_pay_amount, 201);
+                assert!(calc_amount_out == actual_amount_out, 202);
+                assert!(calc_fee == actual_fee, 203);
+                assert!(calc_ref_fee == actual_ref_fee, 204);
+                assert!(calc_protocol_fee == actual_protocol_fee, 205);
+                assert!(calc_gauge_fee == actual_gauge_fee, 206);
+                assert!(calc_after_sqrt_price == pool::current_sqrt_price(&pool), 207);
+                assert!(!pool::calculated_swap_result_is_exceed(&calc), 208);
+
+                // a2b: input=TestCoinB (CoinTypeA), repay balance_a=mint, balance_b=zero
+                let pay_amount = pool::swap_pay_amount(&receipt);
+                let in_coin = coin::mint_for_testing<TestCoinB>(pay_amount, scenario.ctx());
+                pool::repay_flash_swap(
+                    &global_config, &mut pool,
+                    coin::into_balance(in_coin),
+                    coin::into_balance(coin::zero<TestCoinA>(scenario.ctx())),
+                    receipt
+                );
+                sui::balance::destroy_zero(out_a);
+                coin::from_balance(out_b, scenario.ctx()).burn_for_testing();
+            };
+
+            // === Swap 3: a2b, 100M amount_in (crosses tick 100, leaves position1 range) ===
+            {
+                let calc = pool::calculate_swap_result<TestCoinB, TestCoinA>(
+                    &global_config, &pool, true, true, 100_000_000
+                );
+
+                let (out_a, out_b, receipt) = pool::flash_swap<TestCoinB, TestCoinA>(
+                    &global_config, &mut vault, &mut pool,
+                    true, true, 100_000_000, tick_math::min_sqrt_price(),
+                    &mut stats, &price_provider, &clock
+                );
+
+                let actual_amount_out = sui::balance::value(&out_b);
+                let actual_pay_amount = pool::swap_pay_amount(&receipt);
+                let (actual_fee, actual_ref_fee, actual_protocol_fee, actual_gauge_fee) =
+                    pool::fees_amount(&receipt);
+
+                let calc_amount_in = pool::calculated_swap_result_amount_in(&calc);
+                let calc_amount_out = pool::calculated_swap_result_amount_out(&calc);
+                let (calc_fee, calc_ref_fee, calc_protocol_fee, calc_gauge_fee) =
+                    pool::calculated_swap_result_fees_amount(&calc);
+                let calc_after_sqrt_price = pool::calculated_swap_result_after_sqrt_price(&calc);
+
+                assert!(calc_amount_in + calc_fee == actual_pay_amount, 301);
+                assert!(calc_amount_out == actual_amount_out, 302);
+                assert!(calc_fee == actual_fee, 303);
+                assert!(calc_ref_fee == actual_ref_fee, 304);
+                assert!(calc_protocol_fee == actual_protocol_fee, 305);
+                assert!(calc_gauge_fee == actual_gauge_fee, 306);
+                assert!(calc_after_sqrt_price == pool::current_sqrt_price(&pool), 307);
+                assert!(!pool::calculated_swap_result_is_exceed(&calc), 308);
+
+                let pay_amount = pool::swap_pay_amount(&receipt);
+                let in_coin = coin::mint_for_testing<TestCoinB>(pay_amount, scenario.ctx());
+                pool::repay_flash_swap(
+                    &global_config, &mut pool,
+                    coin::into_balance(in_coin),
+                    coin::into_balance(coin::zero<TestCoinA>(scenario.ctx())),
+                    receipt
+                );
+                sui::balance::destroy_zero(out_a);
+                coin::from_balance(out_b, scenario.ctx()).burn_for_testing();
+            };
+
+            // === Swap 4: b2a, 100M amount_in (crosses ticks 100, 200, 300 — leaves all ranges) ===
+            {
+                let calc = pool::calculate_swap_result<TestCoinB, TestCoinA>(
+                    &global_config, &pool, false, true, 100_000_000
+                );
+
+                let (out_a, out_b, receipt) = pool::flash_swap<TestCoinB, TestCoinA>(
+                    &global_config, &mut vault, &mut pool,
+                    false, true, 100_000_000, tick_math::max_sqrt_price(),
+                    &mut stats, &price_provider, &clock
+                );
+
+                // b2a: output=TestCoinB (CoinTypeA) → out_a
+                let actual_amount_out = sui::balance::value(&out_a);
+                let actual_pay_amount = pool::swap_pay_amount(&receipt);
+                let (actual_fee, actual_ref_fee, actual_protocol_fee, actual_gauge_fee) =
+                    pool::fees_amount(&receipt);
+
+                let calc_amount_in = pool::calculated_swap_result_amount_in(&calc);
+                let calc_amount_out = pool::calculated_swap_result_amount_out(&calc);
+                let (calc_fee, calc_ref_fee, calc_protocol_fee, calc_gauge_fee) =
+                    pool::calculated_swap_result_fees_amount(&calc);
+                let calc_after_sqrt_price = pool::calculated_swap_result_after_sqrt_price(&calc);
+
+                assert!(calc_amount_in + calc_fee == actual_pay_amount, 401);
+                assert!(calc_amount_out == actual_amount_out, 402);
+                assert!(calc_fee == actual_fee, 403);
+                assert!(calc_ref_fee == actual_ref_fee, 404);
+                assert!(calc_protocol_fee == actual_protocol_fee, 405);
+                assert!(calc_gauge_fee == actual_gauge_fee, 406);
+                assert!(calc_after_sqrt_price == pool::current_sqrt_price(&pool), 407);
+                assert!(!pool::calculated_swap_result_is_exceed(&calc), 408);
+
+                // b2a: input=TestCoinA (CoinTypeB), repay balance_a=zero, balance_b=mint
+                let pay_amount = pool::swap_pay_amount(&receipt);
+                let in_coin = coin::mint_for_testing<TestCoinA>(pay_amount, scenario.ctx());
+                pool::repay_flash_swap(
+                    &global_config, &mut pool,
+                    coin::into_balance(coin::zero<TestCoinB>(scenario.ctx())),
+                    coin::into_balance(in_coin),
+                    receipt
+                );
+                coin::from_balance(out_a, scenario.ctx()).burn_for_testing();
+                sui::balance::destroy_zero(out_b);
+            };
+
+            // Cleanup
+            transfer::public_transfer(position0, user);
+            transfer::public_transfer(position1, user);
+            transfer::public_transfer(position2, user);
+            transfer::public_transfer(gauge_cap, user);
+            test_scenario::return_shared(pool);
+            test_scenario::return_shared(global_config);
+            test_scenario::return_shared(vault);
+            test_scenario::return_shared(stats);
+            test_scenario::return_shared(price_provider);
+            clock::destroy_for_testing(clock);
+        };
+
+        test_scenario::end(scenario);
+    }
 }
