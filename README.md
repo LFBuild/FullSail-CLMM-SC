@@ -59,3 +59,5 @@ mvr add @pkg/fullsail-clmm
     - latest package `0xecd737da1a3bdc7826dfda093bda6032f380b0e45265166c10b8041b125980b9`
 - [clmm_pool upgrade 2](https://suivision.xyz/txblock/837varhLRgrdhNPYrBJ6YERBjo8RMGvDBMbbrhnHfWvF)
     - latest package `0xf7ca99f9fd82da76083a52ab56d88aff15d039b76499b85db8b8bc4d4804584a`
+- [clmm_pool upgrade 3](https://suivision.xyz/txblock/3rbk2g4FuuqFGKBLyNYLkqJjv2XKvgnSans6EpPaRCSd)
+    - latest package `0x497a144ba3d93ae44d9fd23d4ff4761c329d87a505136d2269c743b2297fa881`
