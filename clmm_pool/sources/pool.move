@@ -1432,7 +1432,6 @@ module clmm_pool::pool {
             a2b,
             by_amount_in,
             amount,
-            false,
             0
         )
     }
@@ -1477,7 +1476,6 @@ module clmm_pool::pool {
             a2b,
             by_amount_in,
             amount,
-            true,
             ref_fee_rate
         )
     }
@@ -1515,7 +1513,6 @@ module clmm_pool::pool {
         a2b: bool,
         by_amount_in: bool,
         amount: u64,
-        with_partner: bool,
         ref_fee_rate: u64
     ): CalculatedSwapResult {
         let mut current_sqrt_price = pool.current_sqrt_price;
@@ -1573,45 +1570,30 @@ module clmm_pool::pool {
 
                 let mut gauge_fee = 0;
                 let mut protocol_fee = 0;
-                let mut ref_fee = 0;
 
-                if (with_partner) {
-                    ref_fee = integer_mate::full_math_u64::mul_div_ceil(
-                        fee_amount,
-                        ref_fee_rate,
-                        clmm_pool::config::protocol_fee_rate_denom()
-                    );
-                    let remaining_fee = fee_amount - ref_fee;
-                    if (remaining_fee > 0) {
-                        let protocol_fee_amount = integer_mate::full_math_u64::mul_div_ceil(
-                            remaining_fee,
-                            clmm_pool::config::protocol_fee_rate(global_config),
-                            clmm_pool::config::protocol_fee_rate_denom()
-                        );
-                        protocol_fee = protocol_fee_amount;
-                        let fee_after_protocol = remaining_fee - protocol_fee_amount;
-                        if (fee_after_protocol > 0) {
-                            let (_, gauge_fee_amount) = calculate_fees(
-                                fee_after_protocol,
-                                pool.liquidity,
-                                pool.fullsail_distribution_staked_liquidity,
-                                unstaked_fee_rate
-                            );
-                            gauge_fee = gauge_fee_amount;
-                        };
-                    };
-                } else {
-                    let protocol_fee = integer_mate::full_math_u64::mul_div_ceil(
-                        fee_amount,
+                let ref_fee = integer_mate::full_math_u64::mul_div_ceil(
+                    fee_amount,
+                    ref_fee_rate,
+                    clmm_pool::config::protocol_fee_rate_denom()
+                );
+                let remaining_fee = fee_amount - ref_fee;
+                if (remaining_fee > 0) {
+                   let protocol_fee_amount = integer_mate::full_math_u64::mul_div_ceil(
+                        remaining_fee,
                         clmm_pool::config::protocol_fee_rate(global_config),
                         clmm_pool::config::protocol_fee_rate_denom()
                     );
-                    (_, gauge_fee) = calculate_fees(
-                        fee_amount - protocol_fee,
-                        pool.liquidity,
-                        pool.fullsail_distribution_staked_liquidity,
-                        unstaked_fee_rate
-                    );
+                    protocol_fee = protocol_fee_amount;
+                    let fee_after_protocol = remaining_fee - protocol_fee_amount;
+                    if (fee_after_protocol > 0) {
+                        let (_, gauge_fee_amount) = calculate_fees(
+                            fee_after_protocol,
+                            current_liquidity,
+                            staked_liquidity,
+                            unstaked_fee_rate
+                        );
+                        gauge_fee = gauge_fee_amount;
+                    };
                 };
         
                 update_swap_result(&mut swap_result, amount_in, amount_out, fee_amount, protocol_fee, ref_fee, gauge_fee);
@@ -2265,7 +2247,7 @@ module clmm_pool::pool {
         } else {
             unstaked_fee_rate
         };
-        let swap_result = swap_in_pool<CoinTypeA, CoinTypeB>(
+        let (swap_result, fee_growth_global_delta) = swap_in_pool<CoinTypeA, CoinTypeB>(
             pool,
             a2b,
             by_amount_in,
@@ -2298,10 +2280,11 @@ module clmm_pool::pool {
         } else {
             *partner_id.borrow()
         };
+        let pool_id = sui::object::id<Pool<CoinTypeA, CoinTypeB>>(pool);
 
         let swap_event = SwapEvent {
             atob: a2b,
-            pool: sui::object::id<Pool<CoinTypeA, CoinTypeB>>(pool),
+            pool: pool_id,
             partner: partner_id_event,
             amount_in: swap_result.amount_in + swap_result.fee_amount,
             amount_out: swap_result.amount_out,
@@ -2316,8 +2299,16 @@ module clmm_pool::pool {
             steps: swap_result.steps,
         };
         sui::event::emit<SwapEvent>(swap_event);
+        if (fee_growth_global_delta > 0) {
+            let update_fee_growth_event = UpdateFeeGrowthGlobalEvent{
+                pool_id,
+                fee_growth_global_a: pool.fee_growth_global_a,
+                fee_growth_global_b: pool.fee_growth_global_b,
+            };
+            sui::event::emit(update_fee_growth_event);
+        };
         let receipt = FlashSwapReceipt<CoinTypeA, CoinTypeB> {
-            pool_id: sui::object::id<Pool<CoinTypeA, CoinTypeB>>(pool),
+            pool_id,
             a2b: a2b,
             partner_id: partner_id,
             pay_amount: swap_result.amount_in + swap_result.fee_amount,
@@ -3281,7 +3272,16 @@ module clmm_pool::pool {
             clock
         );
 
-        clmm_pool::position::mark_position_staked(&mut pool.position_manager, position_id, true);
+        let (fee_growth_a, fee_growth_b, _rewards_growth, _points_growth, fullsail_growth) =
+            get_all_growths_in_tick_range<CoinTypeA, CoinTypeB>(pool, tick_lower, tick_upper);
+        clmm_pool::position::mark_position_staked(
+            &mut pool.position_manager,
+            position_id,
+            fee_growth_a,
+            fee_growth_b,
+            fullsail_growth,
+            true
+        );
     }
 
     /// Returns the amount of tokens sent in the swap step.
@@ -3391,10 +3391,13 @@ module clmm_pool::pool {
     /// * `clock` - Reference to the Sui clock for timestamp verification
     ///
     /// # Returns
-    /// A SwapResult structure containing:
+    /// (SwapResult, growth_global_delta)
+    /// A SwapResult structure contains:
     /// - Amount of tokens input and output
     /// - Fee amounts (protocol, referral, liquidity provider fees)
     /// - Final square root price and tick index
+    /// Growth global delta represents the increase in global fee growth a/b
+    ///
     ///
     /// # Aborts
     /// * If the referral fee rate exceeds protocol_fee_rate_denom (error code: EInvalidRefFeeRate)
@@ -3409,9 +3412,11 @@ module clmm_pool::pool {
         protocol_fee_rate: u64,
         ref_fee_rate: u64,
         clock: &sui::clock::Clock
-    ): SwapResult {
+    ): (SwapResult, u128) {
         assert!(ref_fee_rate <= clmm_pool::config::protocol_fee_rate_denom(), EInvalidRefFeeRate);
         let mut swap_result = default_swap_result();
+        // ideally this should be inside swap_result. But because of upgradability considerations we can't do that.
+        let mut fee_growth_global_delta: u128 = 0;
         let mut remaining_amount = amount;
         let mut next_tick_score = clmm_pool::tick::first_score_for_swap(
             &pool.tick_manager, 
@@ -3457,9 +3462,9 @@ module clmm_pool::pool {
                     clmm_pool::config::protocol_fee_rate_denom()
                 );
                 let remaining_fee = fee_amount - ref_fee_amount;
-                let mut fee_after_protocol = remaining_fee;
                 let mut gauge_fee = 0;
                 let mut protocol_fee = 0;
+                let mut fee_growth_global_step_delta: u128 = 0;
                 if (remaining_fee > 0) {
                     let protocol_fee_amount = integer_mate::full_math_u64::mul_div_ceil(
                         remaining_fee, 
@@ -3468,16 +3473,15 @@ module clmm_pool::pool {
                     );
                     protocol_fee = protocol_fee_amount;
                     let remaining_fee_after_protocol = remaining_fee - protocol_fee_amount;
-                    fee_after_protocol = remaining_fee_after_protocol;
                     if (remaining_fee_after_protocol > 0) {
-                        let (_, gauge_fee_amount) = calculate_fees(
+                        let (fee_growth_amount, gauge_fee_amount) = calculate_fees(
                             remaining_fee_after_protocol, 
                             pool.liquidity, 
                             pool.fullsail_distribution_staked_liquidity, 
                             unstaked_fee_rate
                         );
                         gauge_fee = gauge_fee_amount;
-                        fee_after_protocol = remaining_fee_after_protocol - gauge_fee_amount;
+                        fee_growth_global_step_delta = fee_growth_amount;
                     }
                 };
                 update_swap_result(
@@ -3489,8 +3493,9 @@ module clmm_pool::pool {
                     ref_fee_amount, 
                     gauge_fee
                 );
-                if (fee_after_protocol > 0) {
-                    update_fee_growth_global<CoinTypeA, CoinTypeB>(pool, fee_after_protocol, a2b);
+                if (fee_growth_global_step_delta > 0) {
+                    update_fee_growth_global<CoinTypeA, CoinTypeB>(pool, fee_growth_global_step_delta, a2b);
+                    fee_growth_global_delta = fee_growth_global_delta + fee_growth_global_step_delta;
                 };
             };
             if (next_sqrt_price == tick_sqrt_price) {
@@ -3531,7 +3536,8 @@ module clmm_pool::pool {
             pool.fee_protocol_coin_b = pool.fee_protocol_coin_b + swap_result.protocol_fee_amount;
             pool.fullsail_distribution_gauger_fee.coin_b = pool.fullsail_distribution_gauger_fee.coin_b + swap_result.gauge_fee_amount;
         };
-        swap_result
+
+        (swap_result, fee_growth_global_delta)
     }
 
     /// Returns the amount that needs to be paid for a flash swap operation.
@@ -3664,8 +3670,8 @@ module clmm_pool::pool {
         assert!(clmm_pool::position::is_position_staked(&pool.position_manager, position_id), EUnstakePositionNotStaked);
 
         let liquidity = position.liquidity();
+        let (tick_lower, tick_upper) = position.tick_range();
         if (liquidity > 0) {
-            let (tick_lower, tick_upper) = position.tick_range();
             update_fullsail_distribution_internal<CoinTypeA, CoinTypeB>(
                 pool,
                 integer_mate::i128::neg(integer_mate::i128::from(liquidity)),
@@ -3675,7 +3681,16 @@ module clmm_pool::pool {
             );
         };
 
-        clmm_pool::position::mark_position_staked(&mut pool.position_manager, position_id, false);
+        let (fee_growth_a, fee_growth_b, _rewards_growth, _points_growth, fullsail_growth) =
+            get_all_growths_in_tick_range<CoinTypeA, CoinTypeB>(pool, tick_lower, tick_upper);
+        clmm_pool::position::mark_position_staked(
+            &mut pool.position_manager,
+            position_id,
+            fee_growth_a,
+            fee_growth_b,
+            fullsail_growth,
+            false
+        );
     }
     
     /// Updates the global fee growth for the pool, distributing fees among all liquidity positions.
@@ -3685,28 +3700,21 @@ module clmm_pool::pool {
     /// * `pool` - Mutable reference to the pool
     /// * `fee_after_protocol` - Amount of fees after protocol fees deduction
     /// * `a2b` - Flag indicating swap direction (true for A->B, false for B->A)
-    fun update_fee_growth_global<CoinTypeA, CoinTypeB>(pool: &mut Pool<CoinTypeA, CoinTypeB>, fee_after_protocol: u64, a2b: bool) {
-        if (fee_after_protocol == 0 || pool.liquidity == 0) {
+    fun update_fee_growth_global<CoinTypeA, CoinTypeB>(pool: &mut Pool<CoinTypeA, CoinTypeB>, fee_growth_global_delta: u128, a2b: bool) {
+        if (fee_growth_global_delta == 0 || pool.liquidity == 0) {
             return
         };
         if (a2b) {
             pool.fee_growth_global_a = integer_mate::math_u128::wrapping_add(
                 pool.fee_growth_global_a,
-                ((fee_after_protocol as u128) << 64) / pool.liquidity
+                fee_growth_global_delta
             );
         } else {
             pool.fee_growth_global_b = integer_mate::math_u128::wrapping_add(
                 pool.fee_growth_global_b,
-                ((fee_after_protocol as u128) << 64) / pool.liquidity
+                fee_growth_global_delta
             );
         };
-
-        let event = UpdateFeeGrowthGlobalEvent {
-            pool_id: sui::object::id<Pool<CoinTypeA, CoinTypeB>>(pool),
-            fee_growth_global_a: pool.fee_growth_global_a,
-            fee_growth_global_b: pool.fee_growth_global_b,
-        };
-        sui::event::emit<UpdateFeeGrowthGlobalEvent>(event);
     }
 
     /// Updates the fee rate for the pool. This function can only be called by an account with pool manager role.
@@ -3801,10 +3809,13 @@ module clmm_pool::pool {
                 };
                 pool.fullsail_distribution_reserve = pool.fullsail_distribution_reserve - actual_distribution;
                 if (pool.fullsail_distribution_staked_liquidity > 0) {
-                    pool.fullsail_distribution_growth_global = pool.fullsail_distribution_growth_global + integer_mate::full_math_u128::mul_div_floor(
-                        actual_distribution as u128,
-                        Q64,
-                        pool.fullsail_distribution_staked_liquidity
+                    pool.fullsail_distribution_growth_global = integer_mate::math_u128::wrapping_add(
+                        pool.fullsail_distribution_growth_global,
+                        integer_mate::full_math_u128::mul_div_floor(
+                            actual_distribution as u128,
+                            Q64,
+                            pool.fullsail_distribution_staked_liquidity
+                        )
                     );
                 } else {
                     pool.fullsail_distribution_rollover = pool.fullsail_distribution_rollover + actual_distribution;
@@ -4081,7 +4092,9 @@ module clmm_pool::pool {
         ref_fee_rate: u64,
         clock: &sui::clock::Clock
     ): SwapResult {
-        swap_in_pool(pool, a2b, by_amount_in, sqrt_price_limit, amount, unstaked_fee_rate, protocol_fee_rate, ref_fee_rate, clock)
+        let (swap_result, _) = swap_in_pool(pool, a2b, by_amount_in, sqrt_price_limit, amount, unstaked_fee_rate, protocol_fee_rate, ref_fee_rate, clock);
+        
+        swap_result
     }
     
     #[test_only]
@@ -4155,6 +4168,24 @@ module clmm_pool::pool {
             swap_result.gauge_fee_amount,
             swap_result.steps
         )
+    }
+
+    #[test_only]
+    public fun test_set_fee_growth_global<CoinTypeA, CoinTypeB>(
+        pool: &mut Pool<CoinTypeA, CoinTypeB>,
+        fee_growth_global_a: u128,
+        fee_growth_global_b: u128
+    ) {
+        pool.fee_growth_global_a = fee_growth_global_a;
+        pool.fee_growth_global_b = fee_growth_global_b;
+    }
+
+    #[test_only]
+    public fun test_set_fullsail_distribution<CoinTypeA, CoinTypeB>(
+        pool: &mut Pool<CoinTypeA, CoinTypeB>,
+        growth_global: u128,
+    ) {
+        pool.fullsail_distribution_growth_global = growth_global;
     }
 }
 

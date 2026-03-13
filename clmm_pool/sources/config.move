@@ -51,7 +51,7 @@ module clmm_pool::config {
 
     const INITIAL_PROTOCOL_FEE_RATE: u64 = 2000;
 
-    const PACKAGE_VERSION: u64 = 2;
+    const PACKAGE_VERSION: u64 = 3;
 
     /// Capability for administrative functions in the protocol.
     /// This capability is required for managing global settings and protocol parameters.

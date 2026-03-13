@@ -6602,6 +6602,916 @@ module clmm_pool::pool_tests {
     }
 
     #[test]
+    /// Test that referral fees are applied to the total fee before protocol/staked/unstaked split.
+    /// Two positions with equal liquidity: one staked, one unstaked. 0% unstaked fee rate.
+    /// Partner with 10% referral fee rate (1000 / 10000).
+    ///
+    /// Fee math (per swap direction, 10% ref fee, 0% unstaked tax, 50/50 liquidity split):
+    ///   total_fee = 100000 (0.1% of 100M swap)
+    ///   ref_fee = ceil(100000 * 1000 / 10000) = 10000 → partner
+    ///   remaining = 100000 - 10000 = 90000
+    ///   protocol_fee = ceil(90000 * 2000 / 10000) = 18000
+    ///   remaining_after_protocol = 90000 - 18000 = 72000
+    ///   staked_share = ceil(72000 * 0.5) = 36000 → gauge
+    ///   unstaked_share = 72000 - 36000 = 36000 → fee_growth_global
+    ///   fee_growth = floor(36000 / 90) = 400 (exact, no Q64 rounding loss)
+    ///   collected = 90 * 400 = 36000
+    ///
+    /// Expected (per coin, both directions identical):
+    ///   collect_fee(unstaked) = (36000, 36000)
+    ///   collect_fee(staked) = (0, 0)
+    ///   gauge_fees = (36000, 36000)
+    ///   protocol_fees = (18000, 18000)
+    ///   ref_fee (per swap) = 10000 (coin_a for b2a swap, coin_b for a2b swap)
+    ///   total = 36000 + 36000 + 18000 + 10000 = 100000 per coin (all fees accounted)
+    fun test_collect_fee_with_ref_fee_staked_and_unstaked() {
+        let admin = @0x1;
+        let mut scenario = test_scenario::begin(admin);
+
+        // Initialize factory, config, gauge_cap, partner
+        {
+            factory::test_init(scenario.ctx());
+            config::test_init(scenario.ctx());
+            gauge_cap::gauge_cap::init_test(scenario.ctx());
+            stats::init_test(scenario.ctx());
+            price_provider::init_test(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
+            partner::test_init(scenario.ctx());
+        };
+
+        // Add fee tier and roles
+        scenario.next_tx(admin);
+        {
+            let admin_cap = scenario.take_from_sender<config::AdminCap>();
+            let mut global_config = scenario.take_shared<config::GlobalConfig>();
+            config::add_fee_tier(&mut global_config, 1, 1000, scenario.ctx());
+            config::add_role(&admin_cap, &mut global_config, admin, 0); // POOL_MANAGER
+            config::add_role(&admin_cap, &mut global_config, admin, 2); // PROTOCOL_FEE_CLAIM
+            test_scenario::return_shared(global_config);
+            transfer::public_transfer(admin_cap, admin);
+        };
+
+        // Create partner, pool, positions, stake — then transfer pool to admin
+        scenario.next_tx(admin);
+        let (unstaked_id, staked_id) = {
+            let global_config = scenario.take_shared<config::GlobalConfig>();
+            let clock = clock::create_for_testing(scenario.ctx());
+            let create_gauge_cap = scenario.take_from_sender<gauge_cap::gauge_cap::CreateCap>();
+            let mut partners = scenario.take_shared<partner::Partners>();
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
+
+            // Create partner: ref_fee_rate = 10% (1000/10000), active from 0 to 10000 seconds
+            partner::create_partner(
+                &global_config,
+                &mut partners,
+                std::string::utf8(b"Test Partner"),
+                1000, // ref_fee_rate = 10%
+                0,    // start_time (seconds)
+                10000, // end_time (seconds)
+                admin,
+                &clock,
+                scenario.ctx()
+            );
+
+            let mut pool = pool::new<TestCoinB, TestCoinA>(
+                1, // tick_spacing
+                18584142135623730951,
+                1000, // fee_rate (0.1%)
+                std::string::utf8(b""),
+                0,
+                @0x2,
+                @0x3,
+                true,
+                &clock,
+                scenario.ctx()
+            );
+
+            // Create gauge cap and init gauge
+            let gauge_cap = gauge_cap::gauge_cap::create_gauge_cap(
+                &create_gauge_cap,
+                sui::object::id(&pool),
+                sui::object::id(&pool),
+                scenario.ctx()
+            );
+            pool::init_fullsail_distribution_gauge<TestCoinB, TestCoinA>(&mut pool, &gauge_cap);
+
+            // Set unstaked_liquidity_fee_rate to 0%
+            pool::update_unstaked_liquidity_fee_rate(&global_config, &mut pool, 0, scenario.ctx());
+
+            // --- Create two positions with equal liquidity ---
+            let liquidity_amount = 90 << 64;
+
+            // Position 1: unstaked
+            let mut position_unstaked = pool::open_position<TestCoinB, TestCoinA>(
+                &global_config, &mut pool, 100, 200, scenario.ctx()
+            );
+            let unstaked_id = sui::object::id(&position_unstaked);
+            let receipt = pool::add_liquidity<TestCoinB, TestCoinA>(
+                &global_config, &mut vault, &mut pool, &mut position_unstaked, liquidity_amount, &clock
+            );
+            let (pay_a, pay_b) = receipt.add_liquidity_pay_amount();
+            pool::repay_add_liquidity<TestCoinB, TestCoinA>(
+                &global_config, &mut pool,
+                sui::coin::mint_for_testing<TestCoinB>(pay_a, scenario.ctx()).into_balance(),
+                sui::coin::mint_for_testing<TestCoinA>(pay_b, scenario.ctx()).into_balance(),
+                receipt
+            );
+
+            // Position 2: will be staked
+            let mut position_staked = pool::open_position<TestCoinB, TestCoinA>(
+                &global_config, &mut pool, 100, 200, scenario.ctx()
+            );
+            let staked_id = sui::object::id(&position_staked);
+            let receipt = pool::add_liquidity<TestCoinB, TestCoinA>(
+                &global_config, &mut vault, &mut pool, &mut position_staked, liquidity_amount, &clock
+            );
+            let (pay_a, pay_b) = receipt.add_liquidity_pay_amount();
+            pool::repay_add_liquidity<TestCoinB, TestCoinA>(
+                &global_config, &mut pool,
+                sui::coin::mint_for_testing<TestCoinB>(pay_a, scenario.ctx()).into_balance(),
+                sui::coin::mint_for_testing<TestCoinA>(pay_b, scenario.ctx()).into_balance(),
+                receipt
+            );
+
+            // Stake position 2
+            pool::stake_in_fullsail_distribution<TestCoinB, TestCoinA>(
+                &mut pool, &gauge_cap, &position_staked, &clock
+            );
+
+            transfer::public_transfer(pool, admin);
+            transfer::public_transfer(position_unstaked, admin);
+            transfer::public_transfer(position_staked, admin);
+            transfer::public_transfer(gauge_cap, admin);
+            transfer::public_transfer(create_gauge_cap, admin);
+            test_scenario::return_shared(global_config);
+            test_scenario::return_shared(partners);
+            test_scenario::return_shared(vault);
+            clock::destroy_for_testing(clock);
+            (unstaked_id, staked_id)
+        };
+
+        // Perform swaps with partner and verify all fee components
+        scenario.next_tx(admin);
+        {
+            let global_config = scenario.take_shared<config::GlobalConfig>();
+            let clock = clock::create_for_testing(scenario.ctx());
+            let mut stats = scenario.take_shared<stats::Stats>();
+            let price_provider = scenario.take_shared<price_provider::PriceProvider>();
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
+            let mut pool = scenario.take_from_sender<pool::Pool<TestCoinB, TestCoinA>>();
+            let position_unstaked = scenario.take_from_sender_by_id<position::Position>(unstaked_id);
+            let position_staked = scenario.take_from_sender_by_id<position::Position>(staked_id);
+            let gauge_cap = scenario.take_from_sender<gauge_cap::gauge_cap::GaugeCap>();
+            let mut partner = scenario.take_shared<partner::Partner>();
+
+            // --- Swap 1: b2a (false) — generates fee in coin_a ---
+            let (bal_a, bal_b, receipt) = pool::flash_swap_with_partner<TestCoinB, TestCoinA>(
+                &global_config, &mut vault, &mut pool, &partner,
+                false, true, 100000000,
+                tick_math::max_sqrt_price(),
+                &mut stats, &price_provider, &clock
+            );
+
+            // Verify receipt fee breakdown for b2a swap
+            let (fee_amount, ref_fee_amount, protocol_fee_amount, gauge_fee_amount) =
+                pool::fees_amount(&receipt);
+            assert!(fee_amount == 100000, 101);
+            assert!(ref_fee_amount == 10000, 102);
+            assert!(protocol_fee_amount == 18000, 103);
+            assert!(gauge_fee_amount == 36000, 104);
+
+            // Repay: b2a swap — input is CoinTypeB (TestCoinA), output is CoinTypeA (TestCoinB)
+            // flash_swap returned: bal_a = output (non-zero), bal_b = zero
+            // repay expects: balance_a = zero, balance_b = pay_amount
+            let pay_amount = pool::swap_pay_amount(&receipt);
+            pool::repay_flash_swap_with_partner<TestCoinB, TestCoinA>(
+                &global_config, &mut pool, &mut partner,
+                sui::balance::zero<TestCoinB>(),
+                sui::coin::mint_for_testing<TestCoinA>(pay_amount, scenario.ctx()).into_balance(),
+                receipt
+            );
+            sui::coin::from_balance(bal_a, scenario.ctx()).burn_for_testing();
+            sui::balance::destroy_zero(bal_b);
+
+            // --- Swap 2: a2b (true) — generates fee in coin_b ---
+            let (bal_a, bal_b, receipt) = pool::flash_swap_with_partner<TestCoinB, TestCoinA>(
+                &global_config, &mut vault, &mut pool, &partner,
+                true, true, 100000000,
+                tick_math::min_sqrt_price(),
+                &mut stats, &price_provider, &clock
+            );
+
+            // Verify receipt fee breakdown for a2b swap
+            let (fee_amount, ref_fee_amount, protocol_fee_amount, gauge_fee_amount) =
+                pool::fees_amount(&receipt);
+            assert!(fee_amount == 100000, 111);
+            assert!(ref_fee_amount == 10000, 112);
+            assert!(protocol_fee_amount == 18000, 113);
+            assert!(gauge_fee_amount == 36000, 114);
+
+            // Repay: a2b swap — input is CoinTypeA (TestCoinB), output is CoinTypeB (TestCoinA)
+            // flash_swap returned: bal_a = zero, bal_b = output (non-zero)
+            // repay expects: balance_a = pay_amount, balance_b = zero
+            let pay_amount = pool::swap_pay_amount(&receipt);
+            pool::repay_flash_swap_with_partner<TestCoinB, TestCoinA>(
+                &global_config, &mut pool, &mut partner,
+                sui::coin::mint_for_testing<TestCoinB>(pay_amount, scenario.ctx()).into_balance(),
+                sui::balance::zero<TestCoinA>(),
+                receipt
+            );
+            sui::balance::destroy_zero(bal_a);
+            sui::coin::from_balance(bal_b, scenario.ctx()).burn_for_testing();
+
+            // === ASSERTIONS: verify all fee components ===
+
+            // 1. Unstaked position collects 36000 per token (no Q64 rounding loss)
+            let (fee_a, fee_b) = pool::collect_fee<TestCoinB, TestCoinA>(
+                &global_config, &mut pool, &position_unstaked, true
+            );
+            assert!(sui::balance::value(&fee_a) == 36000, 1);
+            assert!(sui::balance::value(&fee_b) == 36000, 2);
+
+            // 2. Staked position collects zero
+            let (fee_a_staked, fee_b_staked) = pool::collect_fee<TestCoinB, TestCoinA>(
+                &global_config, &mut pool, &position_staked, true
+            );
+            assert!(sui::balance::value(&fee_a_staked) == 0, 3);
+            assert!(sui::balance::value(&fee_b_staked) == 0, 4);
+
+            // 3. Gauge fees = 36000 per token (staked share only, no unstaked tax at 0%)
+            let (gauge_fee_a, gauge_fee_b) = pool::collect_fullsail_distribution_gauger_fees<TestCoinB, TestCoinA>(
+                &mut pool, &gauge_cap
+            );
+            assert!(sui::balance::value(&gauge_fee_a) == 36000, 5);
+            assert!(sui::balance::value(&gauge_fee_b) == 36000, 6);
+
+            // 4. Protocol fees = 18000 per token (20% of 90000 remaining after ref fee)
+            let (protocol_fee_a, protocol_fee_b) = pool::collect_protocol_fee<TestCoinB, TestCoinA>(
+                &global_config, &mut pool, scenario.ctx()
+            );
+            assert!(sui::balance::value(&protocol_fee_a) == 18000, 7);
+            assert!(sui::balance::value(&protocol_fee_b) == 18000, 8);
+
+            // 5. Claim referral fees from partner
+            //    b2a swap stored ref_fee as CoinTypeB (TestCoinA) = 10000
+            //    a2b swap stored ref_fee as CoinTypeA (TestCoinB) = 10000
+            let partner_cap = scenario.take_from_sender<partner::PartnerCap>();
+            partner::claim_ref_fee<TestCoinA>(&global_config, &partner_cap, &mut partner, scenario.ctx());
+            partner::claim_ref_fee<TestCoinB>(&global_config, &partner_cap, &mut partner, scenario.ctx());
+
+            // Cleanup
+            sui::coin::from_balance(fee_a, scenario.ctx()).burn_for_testing();
+            sui::coin::from_balance(fee_b, scenario.ctx()).burn_for_testing();
+            sui::balance::destroy_zero(fee_a_staked);
+            sui::balance::destroy_zero(fee_b_staked);
+            sui::coin::from_balance(gauge_fee_a, scenario.ctx()).burn_for_testing();
+            sui::coin::from_balance(gauge_fee_b, scenario.ctx()).burn_for_testing();
+            sui::coin::from_balance(protocol_fee_a, scenario.ctx()).burn_for_testing();
+            sui::coin::from_balance(protocol_fee_b, scenario.ctx()).burn_for_testing();
+            transfer::public_transfer(position_unstaked, admin);
+            transfer::public_transfer(position_staked, admin);
+            transfer::public_transfer(pool, admin);
+            transfer::public_transfer(gauge_cap, admin);
+            transfer::public_transfer(partner_cap, admin);
+            test_scenario::return_shared(global_config);
+            test_scenario::return_shared(stats);
+            test_scenario::return_shared(price_provider);
+            test_scenario::return_shared(vault);
+            test_scenario::return_shared(partner);
+            clock::destroy_for_testing(clock);
+        };
+
+        // Verify claimed referral fee amounts
+        scenario.next_tx(admin);
+        {
+            // claim_ref_fee transfers Coin to sender — verify amounts in next tx
+            let ref_coin_a = scenario.take_from_sender<sui::coin::Coin<TestCoinA>>();
+            assert!(sui::coin::value(&ref_coin_a) == 10000, 9);
+
+            let ref_coin_b = scenario.take_from_sender<sui::coin::Coin<TestCoinB>>();
+            assert!(sui::coin::value(&ref_coin_b) == 10000, 10);
+
+            sui::coin::burn_for_testing(ref_coin_a);
+            sui::coin::burn_for_testing(ref_coin_b);
+        };
+
+        test_scenario::end(scenario);
+    }
+
+    #[test]
+    /// Test collect_fee with two positions: one staked, one unstaked. 0% unstaked fee rate.
+    /// Follows the same pattern as test_collect_fee_unstaked but adds a staked position
+    /// and verifies the full fee collection flow: LP fees, gauge fees, protocol fees.
+    ///
+    /// Fee math (per swap direction, 0% unstaked tax, 50/50 liquidity split):
+    ///   total_fee = 100000 (0.1% of 100M swap, single step with 180<<64 total liquidity)
+    ///   protocol_fee = ceil(100000 * 2000 / 10000) = 20000
+    ///   remaining = 80000
+    ///   staked_share = ceil(80000 * 0.5) = 40000 → gauge
+    ///   unstaked_share = 80000 - 40000 = 40000 → fee_growth_global
+    ///   unstaked_tax (0%) = 0
+    ///   fee_growth = floor(40000 / 90) = 444 (Q64 truncation)
+    ///   collected = 90 * 444 = 39960 (Q64 rounding loss of 40 per direction)
+    ///
+    /// Expected (per direction, both directions identical):
+    ///   collect_fee(unstaked) = (39960, 39960)
+    ///   collect_fee(staked) = (0, 0)
+    ///   collect_fullsail_distribution_gauger_fees = (40000, 40000)
+    ///   collect_protocol_fee = (20000, 20000)
+    ///   total accounted = 39960 + 40000 + 20000 = 99960 (40 lost to Q64 rounding per direction)
+    fun test_collect_fee_staked_and_unstaked() {
+        let admin = @0x1;
+        let mut scenario = test_scenario::begin(admin);
+
+        // Initialize factory, config, gauge_cap
+        {
+            factory::test_init(scenario.ctx());
+            config::test_init(scenario.ctx());
+            gauge_cap::gauge_cap::init_test(scenario.ctx());
+            stats::init_test(scenario.ctx());
+            price_provider::init_test(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
+        };
+
+        // Add fee tier and roles
+        scenario.next_tx(admin);
+        {
+            let admin_cap = scenario.take_from_sender<config::AdminCap>();
+            let mut global_config = scenario.take_shared<config::GlobalConfig>();
+            config::add_fee_tier(&mut global_config, 1, 1000, scenario.ctx());
+            config::add_role(&admin_cap, &mut global_config, admin, 0); // POOL_MANAGER
+            config::add_role(&admin_cap, &mut global_config, admin, 2); // PROTOCOL_FEE_CLAIM
+            test_scenario::return_shared(global_config);
+            transfer::public_transfer(admin_cap, admin);
+        };
+
+        scenario.next_tx(admin);
+        {
+            let global_config = scenario.take_shared<config::GlobalConfig>();
+            let clock = clock::create_for_testing(scenario.ctx());
+            let create_gauge_cap = scenario.take_from_sender<gauge_cap::gauge_cap::CreateCap>();
+            let mut stats = scenario.take_shared<stats::Stats>();
+            let price_provider = scenario.take_shared<price_provider::PriceProvider>();
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
+
+            let mut pool = pool::new<TestCoinB, TestCoinA>(
+                1, // tick_spacing
+                18584142135623730951,
+                1000, // fee_rate (0.1%)
+                std::string::utf8(b""),
+                0,
+                @0x2,
+                @0x3,
+                true,
+                &clock,
+                scenario.ctx()
+            );
+
+            // Create gauge cap and init gauge
+            let gauge_cap = gauge_cap::gauge_cap::create_gauge_cap(
+                &create_gauge_cap,
+                sui::object::id(&pool),
+                sui::object::id(&pool),
+                scenario.ctx()
+            );
+            pool::init_fullsail_distribution_gauge<TestCoinB, TestCoinA>(&mut pool, &gauge_cap);
+
+            // Set unstaked_liquidity_fee_rate to 0%
+            pool::update_unstaked_liquidity_fee_rate(&global_config, &mut pool, 0, scenario.ctx());
+
+            // --- Create two positions with equal liquidity in the same tick range ---
+            let liquidity_amount = 90 << 64;
+
+            // Position 1: unstaked
+            let mut position_unstaked = pool::open_position<TestCoinB, TestCoinA>(
+                &global_config, &mut pool, 100, 200, scenario.ctx()
+            );
+            let receipt = pool::add_liquidity<TestCoinB, TestCoinA>(
+                &global_config, &mut vault, &mut pool, &mut position_unstaked, liquidity_amount, &clock
+            );
+            let (pay_a, pay_b) = receipt.add_liquidity_pay_amount();
+            pool::repay_add_liquidity<TestCoinB, TestCoinA>(
+                &global_config, &mut pool,
+                sui::coin::mint_for_testing<TestCoinB>(pay_a, scenario.ctx()).into_balance(),
+                sui::coin::mint_for_testing<TestCoinA>(pay_b, scenario.ctx()).into_balance(),
+                receipt
+            );
+
+            // Position 2: will be staked
+            let mut position_staked = pool::open_position<TestCoinB, TestCoinA>(
+                &global_config, &mut pool, 100, 200, scenario.ctx()
+            );
+            let receipt = pool::add_liquidity<TestCoinB, TestCoinA>(
+                &global_config, &mut vault, &mut pool, &mut position_staked, liquidity_amount, &clock
+            );
+            let (pay_a, pay_b) = receipt.add_liquidity_pay_amount();
+            pool::repay_add_liquidity<TestCoinB, TestCoinA>(
+                &global_config, &mut pool,
+                sui::coin::mint_for_testing<TestCoinB>(pay_a, scenario.ctx()).into_balance(),
+                sui::coin::mint_for_testing<TestCoinA>(pay_b, scenario.ctx()).into_balance(),
+                receipt
+            );
+
+            // Stake position 2
+            pool::stake_in_fullsail_distribution<TestCoinB, TestCoinA>(
+                &mut pool, &gauge_cap, &position_staked, &clock
+            );
+
+            // --- Perform swaps in both directions to generate fees ---
+            let (bal_a, bal_b, receipt) = pool::flash_swap<TestCoinB, TestCoinA>(
+                &global_config, &mut vault, &mut pool,
+                false, true, 100000000,
+                tick_math::max_sqrt_price(),
+                &mut stats, &price_provider, &clock
+            );
+            pool::destroy_flash_swap_receipt<TestCoinB, TestCoinA>(receipt);
+            sui::coin::from_balance(bal_a, scenario.ctx()).burn_for_testing();
+            sui::coin::from_balance(bal_b, scenario.ctx()).burn_for_testing();
+
+            let (bal_a, bal_b, receipt) = pool::flash_swap<TestCoinB, TestCoinA>(
+                &global_config, &mut vault, &mut pool,
+                true, true, 100000000,
+                tick_math::min_sqrt_price(),
+                &mut stats, &price_provider, &clock
+            );
+            pool::destroy_flash_swap_receipt<TestCoinB, TestCoinA>(receipt);
+            sui::coin::from_balance(bal_a, scenario.ctx()).burn_for_testing();
+            sui::coin::from_balance(bal_b, scenario.ctx()).burn_for_testing();
+
+            // === ASSERTIONS ===
+
+            // 1. Unstaked position collects 39960 per token
+            let (fee_a, fee_b) = pool::collect_fee<TestCoinB, TestCoinA>(
+                &global_config, &mut pool, &position_unstaked, true
+            );
+            assert!(sui::balance::value(&fee_a) == 39960, 1);
+            assert!(sui::balance::value(&fee_b) == 39960, 2);
+
+            // 2. Staked position collects zero
+            let (fee_a_staked, fee_b_staked) = pool::collect_fee<TestCoinB, TestCoinA>(
+                &global_config, &mut pool, &position_staked, true
+            );
+            assert!(sui::balance::value(&fee_a_staked) == 0, 3);
+            assert!(sui::balance::value(&fee_b_staked) == 0, 4);
+
+            // 3. Gauge fees = 40000 per token (staked share only, no unstaked tax at 0%)
+            let (gauge_fee_a, gauge_fee_b) = pool::collect_fullsail_distribution_gauger_fees<TestCoinB, TestCoinA>(
+                &mut pool, &gauge_cap
+            );
+            assert!(sui::balance::value(&gauge_fee_a) == 40000, 5);
+            assert!(sui::balance::value(&gauge_fee_b) == 40000, 6);
+
+            // 4. Protocol fees = 20000 per token (20% of 100000)
+            let (protocol_fee_a, protocol_fee_b) = pool::collect_protocol_fee<TestCoinB, TestCoinA>(
+                &global_config, &mut pool, scenario.ctx()
+            );
+            assert!(sui::balance::value(&protocol_fee_a) == 20000, 7);
+            assert!(sui::balance::value(&protocol_fee_b) == 20000, 8);
+
+            // Cleanup
+            sui::coin::from_balance(fee_a, scenario.ctx()).burn_for_testing();
+            sui::coin::from_balance(fee_b, scenario.ctx()).burn_for_testing();
+            sui::balance::destroy_zero(fee_a_staked);
+            sui::balance::destroy_zero(fee_b_staked);
+            sui::coin::from_balance(gauge_fee_a, scenario.ctx()).burn_for_testing();
+            sui::coin::from_balance(gauge_fee_b, scenario.ctx()).burn_for_testing();
+            sui::coin::from_balance(protocol_fee_a, scenario.ctx()).burn_for_testing();
+            sui::coin::from_balance(protocol_fee_b, scenario.ctx()).burn_for_testing();
+            transfer::public_transfer(position_unstaked, admin);
+            transfer::public_transfer(position_staked, admin);
+            transfer::public_transfer(pool, admin);
+            transfer::public_transfer(gauge_cap, admin);
+            transfer::public_transfer(create_gauge_cap, admin);
+            test_scenario::return_shared(global_config);
+            test_scenario::return_shared(stats);
+            test_scenario::return_shared(price_provider);
+            test_scenario::return_shared(vault);
+            clock::destroy_for_testing(clock);
+        };
+
+        test_scenario::end(scenario);
+    }
+
+    #[test]
+    /// Test fee distribution between staked and unstaked positions with 0% unstaked fee rate.
+    /// Two positions with equal liquidity in the same tick range:
+    /// - position_unstaked: collects fees via fee_growth_global
+    /// - position_staked: fees go to gauge, collect_fee returns 0
+    ///
+    /// Fee math (per swap direction, 0% unstaked tax, 50/50 liquidity split):
+    ///   total_fee = 100000 (0.1% of 100M swap, single step with 180<<64 liquidity)
+    ///   protocol_fee = ceil(100000 * 2000 / 10000) = 20000
+    ///   remaining = 80000
+    ///   staked_share = ceil(80000 * 0.5) = 40000 → gauge
+    ///   unstaked_share = 80000 - 40000 = 40000 → fee_growth_global
+    ///   fee_growth = floor(40000 / 90) = 444 (Q64 truncation: 40000 * 2^64 / (90 * 2^64))
+    ///   collected = 90 * 444 = 39960 (Q64 rounding loss of 40 per direction)
+    ///
+    /// Expected (per direction, both directions identical):
+    ///   calculate_and_update_fee(staked) = (0, 0)   -- staked must NOT accrue via fee_growth
+    ///   collect_fee(staked) = (0, 0)                 -- staked positions cannot collect
+    ///   collect_fee(unstaked) = (39960, 39960)       -- unstaked gets its share (minus Q64 rounding)
+    ///   gauge_fees = (40000, 40000)                  -- staked share (no rounding loss)
+    ///   protocol_fees = (20000, 20000)
+    fun test_calculate_and_update_fee_staked_and_unstaked() {
+        let admin = @0x1;
+        let mut scenario = test_scenario::begin(admin);
+
+        // Initialize factory, config, gauge_cap
+        {
+            factory::test_init(scenario.ctx());
+            config::test_init(scenario.ctx());
+            gauge_cap::gauge_cap::init_test(scenario.ctx());
+            stats::init_test(scenario.ctx());
+            price_provider::init_test(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
+        };
+
+        // Add fee tier and pool manager role
+        scenario.next_tx(admin);
+        {
+            let admin_cap = scenario.take_from_sender<config::AdminCap>();
+            let mut global_config = scenario.take_shared<config::GlobalConfig>();
+            config::add_fee_tier(&mut global_config, 1, 1000, scenario.ctx());
+            // role 0 = POOL_MANAGER (needed to update unstaked fee rate)
+            config::add_role(&admin_cap, &mut global_config, admin, 0);
+            // role 2 = PROTOCOL_FEE_CLAIM
+            config::add_role(&admin_cap, &mut global_config, admin, 2);
+            test_scenario::return_shared(global_config);
+            transfer::public_transfer(admin_cap, admin);
+        };
+
+        scenario.next_tx(admin);
+        {
+            let mut global_config = scenario.take_shared<config::GlobalConfig>();
+            let clock = clock::create_for_testing(scenario.ctx());
+            let create_gauge_cap = scenario.take_from_sender<gauge_cap::gauge_cap::CreateCap>();
+            let mut stats = scenario.take_shared<stats::Stats>();
+            let price_provider = scenario.take_shared<price_provider::PriceProvider>();
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
+
+            // Create a pool with fee_rate = 1000 (0.1%)
+            let initial_sqrt_price = 18584142135623730951;
+            let mut pool = pool::new<TestCoinB, TestCoinA>(
+                1, // tick_spacing
+                initial_sqrt_price,
+                1000, // fee_rate
+                std::string::utf8(b""),
+                0,
+                @0x2,
+                @0x3,
+                true,
+                &clock,
+                scenario.ctx()
+            );
+
+            // Create gauge cap and init gauge
+            let gauge_cap = gauge_cap::gauge_cap::create_gauge_cap(
+                &create_gauge_cap,
+                sui::object::id(&pool),
+                sui::object::id(&pool),
+                scenario.ctx()
+            );
+            pool::init_fullsail_distribution_gauge<TestCoinB, TestCoinA>(&mut pool, &gauge_cap);
+
+            // Set unstaked_liquidity_fee_rate to 0 (no tax on unstaked fees)
+            pool::update_unstaked_liquidity_fee_rate(&global_config, &mut pool, 0, scenario.ctx());
+
+            // --- Create two positions with equal liquidity in the same tick range ---
+            let liquidity_amount = 90 << 64;
+
+            // Position 1: will remain unstaked
+            let mut position_unstaked = pool::open_position<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut pool,
+                100, // tick_lower
+                200, // tick_upper
+                scenario.ctx()
+            );
+            let receipt = pool::add_liquidity<TestCoinB, TestCoinA>(
+                &global_config, &mut vault, &mut pool, &mut position_unstaked, liquidity_amount, &clock
+            );
+            let (pay_a, pay_b) = receipt.add_liquidity_pay_amount();
+            pool::repay_add_liquidity<TestCoinB, TestCoinA>(
+                &global_config, &mut pool,
+                sui::coin::mint_for_testing<TestCoinB>(pay_a, scenario.ctx()).into_balance(),
+                sui::coin::mint_for_testing<TestCoinA>(pay_b, scenario.ctx()).into_balance(),
+                receipt
+            );
+
+            // Position 2: will be staked
+            let mut position_staked = pool::open_position<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut pool,
+                100, // same tick range
+                200,
+                scenario.ctx()
+            );
+            let receipt = pool::add_liquidity<TestCoinB, TestCoinA>(
+                &global_config, &mut vault, &mut pool, &mut position_staked, liquidity_amount, &clock
+            );
+            let (pay_a, pay_b) = receipt.add_liquidity_pay_amount();
+            pool::repay_add_liquidity<TestCoinB, TestCoinA>(
+                &global_config, &mut pool,
+                sui::coin::mint_for_testing<TestCoinB>(pay_a, scenario.ctx()).into_balance(),
+                sui::coin::mint_for_testing<TestCoinA>(pay_b, scenario.ctx()).into_balance(),
+                receipt
+            );
+
+            // Stake position 2
+            pool::stake_in_fullsail_distribution<TestCoinB, TestCoinA>(
+                &mut pool, &gauge_cap, &position_staked, &clock
+            );
+
+            // --- Perform swaps in both directions to generate fees ---
+            let (bal_a, bal_b, receipt) = pool::flash_swap<TestCoinB, TestCoinA>(
+                &global_config, &mut vault, &mut pool,
+                false, true, 100000000,
+                tick_math::max_sqrt_price(),
+                &mut stats, &price_provider, &clock
+            );
+            pool::destroy_flash_swap_receipt<TestCoinB, TestCoinA>(receipt);
+            sui::coin::from_balance(bal_a, scenario.ctx()).burn_for_testing();
+            sui::coin::from_balance(bal_b, scenario.ctx()).burn_for_testing();
+
+            let (bal_a, bal_b, receipt) = pool::flash_swap<TestCoinB, TestCoinA>(
+                &global_config, &mut vault, &mut pool,
+                true, true, 100000000,
+                tick_math::min_sqrt_price(),
+                &mut stats, &price_provider, &clock
+            );
+            pool::destroy_flash_swap_receipt<TestCoinB, TestCoinA>(receipt);
+            sui::coin::from_balance(bal_a, scenario.ctx()).burn_for_testing();
+            sui::coin::from_balance(bal_b, scenario.ctx()).burn_for_testing();
+
+            // --- Staked position: calculate_and_update_fee SHOULD return 0 ---
+            // Staked positions must NOT accrue fees via fee_growth_global.
+            // Their share goes to gauge instead.
+            let staked_id = sui::object::id(&position_staked);
+            let (fee_a_staked, fee_b_staked) = pool::calculate_and_update_fee<TestCoinB, TestCoinA>(
+                &global_config, &mut pool, staked_id
+            );
+            assert!(fee_a_staked == 0, 1);
+            assert!(fee_b_staked == 0, 2);
+
+            // --- Unstaked position: should have the unstaked share of fees ---
+            let unstaked_id = sui::object::id(&position_unstaked);
+            let (fee_a_unstaked, fee_b_unstaked) = pool::calculate_and_update_fee<TestCoinB, TestCoinA>(
+                &global_config, &mut pool, unstaked_id
+            );
+            assert!(fee_a_unstaked == 39960, 3);
+            assert!(fee_b_unstaked == 39960, 4);
+
+            // --- Collect fees from staked position: must be zero ---
+            let (collect_a_staked, collect_b_staked) = pool::collect_fee<TestCoinB, TestCoinA>(
+                &global_config, &mut pool, &position_staked, true
+            );
+            assert!(sui::balance::value(&collect_a_staked) == 0, 5);
+            assert!(sui::balance::value(&collect_b_staked) == 0, 6);
+
+            // --- Collect fees from unstaked position ---
+            let (collect_a, collect_b) = pool::collect_fee<TestCoinB, TestCoinA>(
+                &global_config, &mut pool, &position_unstaked, true
+            );
+            let collected_a = sui::balance::value(&collect_a);
+            let collected_b = sui::balance::value(&collect_b);
+            assert!(collected_a == 39960, 7);
+            assert!(collected_b == 39960, 8);
+
+            // --- Check gauge and protocol fees ---
+            let (gauger_fee_a, gauger_fee_b) = pool::pool_fee_a_b(
+                &pool::fullsail_distribution_gauger_fee<TestCoinB, TestCoinA>(&pool)
+            );
+            let (protocol_fee_a, protocol_fee_b) = pool::protocol_fee(&pool);
+
+            // Verify gauge fees 
+            assert!(gauger_fee_a == 40000, 9);
+            assert!(gauger_fee_b == 40000, 10);
+
+            // protocol = 20% of total 
+            assert!(protocol_fee_a == 20000, 11);
+            assert!(protocol_fee_b == 20000, 13);
+
+            // Cleanup
+            sui::balance::destroy_zero(collect_a_staked);
+            sui::balance::destroy_zero(collect_b_staked);
+            sui::coin::from_balance(collect_a, scenario.ctx()).burn_for_testing();
+            sui::coin::from_balance(collect_b, scenario.ctx()).burn_for_testing();
+            transfer::public_transfer(position_unstaked, admin);
+            transfer::public_transfer(position_staked, admin);
+            transfer::public_transfer(pool, admin);
+            transfer::public_transfer(gauge_cap, admin);
+            transfer::public_transfer(create_gauge_cap, admin);
+            test_scenario::return_shared(global_config);
+            test_scenario::return_shared(stats);
+            test_scenario::return_shared(price_provider);
+            test_scenario::return_shared(vault);
+            clock::destroy_for_testing(clock);
+        };
+
+        test_scenario::end(scenario);
+    }
+
+    #[test]
+    /// Test fee distribution between staked and unstaked positions with 25% unstaked fee rate.
+    /// Two positions with equal liquidity in the same tick range.
+    ///
+    /// Fee math (per swap direction, 25% unstaked tax, 50/50 liquidity split):
+    ///   total_fee = 100000 (0.1% of 100M swap, single step with 180<<64 liquidity)
+    ///   protocol_fee = ceil(100000 * 2000 / 10000) = 20000
+    ///   remaining = 80000
+    ///   staked_share = ceil(80000 * 0.5) = 40000
+    ///   unstaked_portion = 80000 - 40000 = 40000
+    ///   unstaked_tax = ceil(40000 * 2500 / 10000) = 10000 → redirected to gauge
+    ///   unstaked_net = 40000 - 10000 = 30000 → fee_growth_global
+    ///   total_gauge = 40000 + 10000 = 50000
+    ///   fee_growth = floor(30000 / 90) = 333 (Q64 truncation: 30000 * 2^64 / (90 * 2^64))
+    ///   collected = 90 * 333 = 29970 (Q64 rounding loss of 30 per direction)
+    ///
+    /// Expected (per direction, both directions identical):
+    ///   calculate_and_update_fee(staked) = (0, 0)   -- staked must NOT accrue via fee_growth
+    ///   collect_fee(staked) = (0, 0)                 -- staked positions cannot collect
+    ///   collect_fee(unstaked) = (29970, 29970)       -- unstaked gets net share (minus Q64 rounding)
+    ///   gauge_fees = (50000, 50000)                  -- staked share + unstaked tax
+    ///   protocol_fees = (20000, 20000)
+    ///   total accounted = 29970 + 50000 + 20000 = 99970 (30 lost to Q64 rounding per direction)
+    fun test_calculate_and_update_fee_staked_and_unstaked_25pct_unstaked_rate() {
+        let admin = @0x1;
+        let mut scenario = test_scenario::begin(admin);
+
+        // Initialize factory, config, gauge_cap
+        {
+            factory::test_init(scenario.ctx());
+            config::test_init(scenario.ctx());
+            gauge_cap::gauge_cap::init_test(scenario.ctx());
+            stats::init_test(scenario.ctx());
+            price_provider::init_test(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
+        };
+
+        // Add fee tier and roles
+        scenario.next_tx(admin);
+        {
+            let admin_cap = scenario.take_from_sender<config::AdminCap>();
+            let mut global_config = scenario.take_shared<config::GlobalConfig>();
+            config::add_fee_tier(&mut global_config, 1, 1000, scenario.ctx());
+            config::add_role(&admin_cap, &mut global_config, admin, 0); // POOL_MANAGER
+            config::add_role(&admin_cap, &mut global_config, admin, 2); // PROTOCOL_FEE_CLAIM
+            test_scenario::return_shared(global_config);
+            transfer::public_transfer(admin_cap, admin);
+        };
+
+        scenario.next_tx(admin);
+        {
+            let mut global_config = scenario.take_shared<config::GlobalConfig>();
+            let clock = clock::create_for_testing(scenario.ctx());
+            let create_gauge_cap = scenario.take_from_sender<gauge_cap::gauge_cap::CreateCap>();
+            let mut stats = scenario.take_shared<stats::Stats>();
+            let price_provider = scenario.take_shared<price_provider::PriceProvider>();
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
+
+            let initial_sqrt_price = 18584142135623730951;
+            let mut pool = pool::new<TestCoinB, TestCoinA>(
+                1, // tick_spacing
+                initial_sqrt_price,
+                1000, // fee_rate (0.1%)
+                std::string::utf8(b""),
+                0,
+                @0x2,
+                @0x3,
+                true,
+                &clock,
+                scenario.ctx()
+            );
+
+            // Create gauge cap and init gauge
+            let gauge_cap = gauge_cap::gauge_cap::create_gauge_cap(
+                &create_gauge_cap,
+                sui::object::id(&pool),
+                sui::object::id(&pool),
+                scenario.ctx()
+            );
+            pool::init_fullsail_distribution_gauge<TestCoinB, TestCoinA>(&mut pool, &gauge_cap);
+
+            // Set unstaked_liquidity_fee_rate to 25% (2500 out of 10000)
+            pool::update_unstaked_liquidity_fee_rate(&global_config, &mut pool, 2500, scenario.ctx());
+
+            // --- Create two positions with equal liquidity in the same tick range ---
+            let liquidity_amount = 90 << 64;
+
+            // Position 1: unstaked
+            let mut position_unstaked = pool::open_position<TestCoinB, TestCoinA>(
+                &global_config, &mut pool, 100, 200, scenario.ctx()
+            );
+            let receipt = pool::add_liquidity<TestCoinB, TestCoinA>(
+                &global_config, &mut vault, &mut pool, &mut position_unstaked, liquidity_amount, &clock
+            );
+            let (pay_a, pay_b) = receipt.add_liquidity_pay_amount();
+            pool::repay_add_liquidity<TestCoinB, TestCoinA>(
+                &global_config, &mut pool,
+                sui::coin::mint_for_testing<TestCoinB>(pay_a, scenario.ctx()).into_balance(),
+                sui::coin::mint_for_testing<TestCoinA>(pay_b, scenario.ctx()).into_balance(),
+                receipt
+            );
+
+            // Position 2: will be staked
+            let mut position_staked = pool::open_position<TestCoinB, TestCoinA>(
+                &global_config, &mut pool, 100, 200, scenario.ctx()
+            );
+            let receipt = pool::add_liquidity<TestCoinB, TestCoinA>(
+                &global_config, &mut vault, &mut pool, &mut position_staked, liquidity_amount, &clock
+            );
+            let (pay_a, pay_b) = receipt.add_liquidity_pay_amount();
+            pool::repay_add_liquidity<TestCoinB, TestCoinA>(
+                &global_config, &mut pool,
+                sui::coin::mint_for_testing<TestCoinB>(pay_a, scenario.ctx()).into_balance(),
+                sui::coin::mint_for_testing<TestCoinA>(pay_b, scenario.ctx()).into_balance(),
+                receipt
+            );
+
+            // Stake position 2
+            pool::stake_in_fullsail_distribution<TestCoinB, TestCoinA>(
+                &mut pool, &gauge_cap, &position_staked, &clock
+            );
+
+            // --- Perform swaps in both directions to generate fees ---
+            let (bal_a, bal_b, receipt) = pool::flash_swap<TestCoinB, TestCoinA>(
+                &global_config, &mut vault, &mut pool,
+                false, true, 100000000,
+                tick_math::max_sqrt_price(),
+                &mut stats, &price_provider, &clock
+            );
+            pool::destroy_flash_swap_receipt<TestCoinB, TestCoinA>(receipt);
+            sui::coin::from_balance(bal_a, scenario.ctx()).burn_for_testing();
+            sui::coin::from_balance(bal_b, scenario.ctx()).burn_for_testing();
+
+            let (bal_a, bal_b, receipt) = pool::flash_swap<TestCoinB, TestCoinA>(
+                &global_config, &mut vault, &mut pool,
+                true, true, 100000000,
+                tick_math::min_sqrt_price(),
+                &mut stats, &price_provider, &clock
+            );
+            pool::destroy_flash_swap_receipt<TestCoinB, TestCoinA>(receipt);
+            sui::coin::from_balance(bal_a, scenario.ctx()).burn_for_testing();
+            sui::coin::from_balance(bal_b, scenario.ctx()).burn_for_testing();
+
+            // === ASSERTIONS: exact fee amounts ===
+
+            // 1. Staked position must NOT accrue fees via fee_growth_global
+            let staked_id = sui::object::id(&position_staked);
+            let (fee_a_staked, fee_b_staked) = pool::calculate_and_update_fee<TestCoinB, TestCoinA>(
+                &global_config, &mut pool, staked_id
+            );
+            assert!(fee_a_staked == 0, 1);
+            assert!(fee_b_staked == 0, 2);
+
+            // 2. Staked position cannot collect fees
+            let (collect_a_staked, collect_b_staked) = pool::collect_fee<TestCoinB, TestCoinA>(
+                &global_config, &mut pool, &position_staked, true
+            );
+            assert!(sui::balance::value(&collect_a_staked) == 0, 3);
+            assert!(sui::balance::value(&collect_b_staked) == 0, 4);
+
+            // 3. Unstaked position collects 29970 per token (90 * floor(30000/90) = 90 * 333)
+            let (collect_a, collect_b) = pool::collect_fee<TestCoinB, TestCoinA>(
+                &global_config, &mut pool, &position_unstaked, true
+            );
+            assert!(sui::balance::value(&collect_a) == 29970, 5);
+            assert!(sui::balance::value(&collect_b) == 29970, 6);
+
+            // 4. Gauge fees = 50000 per token (staked share 40000 + unstaked tax 10000)
+            let (gauger_fee_a, gauger_fee_b) = pool::pool_fee_a_b(
+                &pool::fullsail_distribution_gauger_fee<TestCoinB, TestCoinA>(&pool)
+            );
+            assert!(gauger_fee_a == 50000, 7);
+            assert!(gauger_fee_b == 50000, 8);
+
+            // 5. Protocol fees = 20000 per token (20% of 100000)
+            let (protocol_fee_a, protocol_fee_b) = pool::protocol_fee(&pool);
+            assert!(protocol_fee_a == 20000, 9);
+            assert!(protocol_fee_b == 20000, 10);
+
+            // Cleanup
+            sui::balance::destroy_zero(collect_a_staked);
+            sui::balance::destroy_zero(collect_b_staked);
+            sui::coin::from_balance(collect_a, scenario.ctx()).burn_for_testing();
+            sui::coin::from_balance(collect_b, scenario.ctx()).burn_for_testing();
+            transfer::public_transfer(position_unstaked, admin);
+            transfer::public_transfer(position_staked, admin);
+            transfer::public_transfer(pool, admin);
+            transfer::public_transfer(gauge_cap, admin);
+            transfer::public_transfer(create_gauge_cap, admin);
+            test_scenario::return_shared(global_config);
+            test_scenario::return_shared(stats);
+            test_scenario::return_shared(price_provider);
+            test_scenario::return_shared(vault);
+            clock::destroy_for_testing(clock);
+        };
+
+        test_scenario::end(scenario);
+    }
+
+    #[test]
     #[expected_failure(abort_code = clmm_pool::clmm_math::ECalculationOverflow)]
     fun test_overflow_add_liquidity_a() {
         let admin = @0x1;
@@ -6861,7 +7771,365 @@ module clmm_pool::pool_tests {
             test_scenario::return_shared(vault);
             clock::destroy_for_testing(clock);
         };
-        
+
+        test_scenario::end(scenario);
+    }
+
+    #[test]
+    /// Test fee_growth_global overflow via wrapping_add in update_fee_growth_global during swap.
+    /// Verifies that when fee_growth_global is near u128::MAX, a swap that generates fees
+    /// causes wrapping_add overflow, and fees are still collected correctly by the position.
+    ///
+    /// Setup:
+    ///   - Pool with fee_rate=1000 (0.1%), protocol_fee=20%, unstaked_fee_rate=0%
+    ///   - Set fee_growth_global_a = MAX - 887 before adding liquidity
+    ///   - fee_growth_global_b = 0 (no overflow, serves as control)
+    ///   - Single position at ticks (100, 200), current_tick=148 (in range)
+    ///   - Liquidity = 90 << 64
+    ///
+    /// Tick initialization (current_tick=148):
+    ///   - tick 100: current >= lower → fee_growth_outside = fee_growth_global = (MAX-887, 0)
+    ///   - tick 200: current < upper → fee_growth_outside = (0, 0)
+    ///   - fee_growth_inside = global - outside_lower - outside_upper = (0, 0)
+    ///   - Position snapshots fee_growth_inside = (0, 0)
+    ///
+    /// Swap fees (per direction, 100M amount_in):
+    ///   total_fee = 100000
+    ///   protocol = ceil(100000 * 2000/10000) = 20000
+    ///   remaining = 80000
+    ///   fee_growth_delta = floor(80000 * 2^64 / (90 * 2^64)) = floor(80000/90) = 888
+    ///
+    /// After b2a swap: fee_growth_global_b = 0 + 888 = 888 (no overflow)
+    /// After a2b swap: fee_growth_global_a = wrapping_add(MAX-887, 888) = 0 (OVERFLOW!)
+    ///
+    /// Fee collection (wrapping arithmetic handles overflow correctly):
+    ///   fee_growth_inside_a = wrapping_sub(wrapping_sub(0, MAX-887), 0) = 888
+    ///   fee_growth_inside_b = wrapping_sub(wrapping_sub(888, 0), 0) = 888
+    ///   fee_owned_a = mul_shr(90 << 64, 888, 64) = 90 * 888 = 79920
+    ///   fee_owned_b = 79920 (same — control, no overflow)
+    fun test_fee_growth_global_overflow_in_swap() {
+        let admin = @0x1;
+        let mut scenario = test_scenario::begin(admin);
+
+        // Initialize factory, config, gauge_cap
+        {
+            factory::test_init(scenario.ctx());
+            config::test_init(scenario.ctx());
+            gauge_cap::gauge_cap::init_test(scenario.ctx());
+            stats::init_test(scenario.ctx());
+            price_provider::init_test(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
+        };
+
+        // Add fee tier and roles
+        scenario.next_tx(admin);
+        {
+            let admin_cap = scenario.take_from_sender<config::AdminCap>();
+            let mut global_config = scenario.take_shared<config::GlobalConfig>();
+            config::add_fee_tier(&mut global_config, 1, 1000, scenario.ctx());
+            config::add_role(&admin_cap, &mut global_config, admin, 0); // POOL_MANAGER
+            config::add_role(&admin_cap, &mut global_config, admin, 2); // PROTOCOL_FEE_CLAIM
+            test_scenario::return_shared(global_config);
+            transfer::public_transfer(admin_cap, admin);
+        };
+
+        scenario.next_tx(admin);
+        {
+            let global_config = scenario.take_shared<config::GlobalConfig>();
+            let clock = clock::create_for_testing(scenario.ctx());
+            let create_gauge_cap = scenario.take_from_sender<gauge_cap::gauge_cap::CreateCap>();
+            let mut stats = scenario.take_shared<stats::Stats>();
+            let price_provider = scenario.take_shared<price_provider::PriceProvider>();
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
+
+            // Create pool with current_tick = 148 (in range of position 100..200)
+            let mut pool = pool::new<TestCoinB, TestCoinA>(
+                1, // tick_spacing
+                18584142135623730951, // current_tick = 148
+                1000, // fee_rate (0.1%)
+                std::string::utf8(b""),
+                0,
+                @0x2,
+                @0x3,
+                true,
+                &clock,
+                scenario.ctx()
+            );
+
+            // Create gauge cap and init gauge (needed for pool operations)
+            let gauge_cap = gauge_cap::gauge_cap::create_gauge_cap(
+                &create_gauge_cap,
+                sui::object::id(&pool),
+                sui::object::id(&pool),
+                scenario.ctx()
+            );
+            pool::init_fullsail_distribution_gauge<TestCoinB, TestCoinA>(&mut pool, &gauge_cap);
+
+            // Set unstaked_liquidity_fee_rate to 0%
+            pool::update_unstaked_liquidity_fee_rate(&global_config, &mut pool, 0, scenario.ctx());
+
+            // === KEY STEP: Set fee_growth_global_a near u128::MAX before adding liquidity ===
+            // fee_growth_global_b stays at 0 as a control (no overflow).
+            let max = 0xffffffffffffffffffffffffffffffff; // u128::MAX
+            pool::test_set_fee_growth_global<TestCoinB, TestCoinA>(&mut pool, max - 887, 0);
+
+            // Create position — ticks initialize with fee_growth_outside from current fee_growth_global
+            // tick 100 (current >= lower): fee_growth_outside = (MAX-887, 0)
+            // tick 200 (current < upper): fee_growth_outside = (0, 0)
+            // fee_growth_inside = global - outside_lower - outside_upper = (0, 0)
+            let liquidity_amount = 90 << 64;
+            let mut position = pool::open_position<TestCoinB, TestCoinA>(
+                &global_config, &mut pool, 100, 200, scenario.ctx()
+            );
+            let receipt = pool::add_liquidity<TestCoinB, TestCoinA>(
+                &global_config, &mut vault, &mut pool, &mut position, liquidity_amount, &clock
+            );
+            let (pay_a, pay_b) = receipt.add_liquidity_pay_amount();
+            pool::repay_add_liquidity<TestCoinB, TestCoinA>(
+                &global_config, &mut pool,
+                sui::coin::mint_for_testing<TestCoinB>(pay_a, scenario.ctx()).into_balance(),
+                sui::coin::mint_for_testing<TestCoinA>(pay_b, scenario.ctx()).into_balance(),
+                receipt
+            );
+
+            // Verify fee_growth_global before swaps
+            let (fg_a, fg_b) = pool::fees_growth_global(&pool);
+            assert!(fg_a == max - 887, 100);
+            assert!(fg_b == 0, 101);
+
+            // --- b2a swap: generates fee_growth_global_b delta = 888 (no overflow) ---
+            let (bal_a, bal_b, receipt) = pool::flash_swap<TestCoinB, TestCoinA>(
+                &global_config, &mut vault, &mut pool,
+                false, true, 100000000,
+                tick_math::max_sqrt_price(),
+                &mut stats, &price_provider, &clock
+            );
+            pool::destroy_flash_swap_receipt<TestCoinB, TestCoinA>(receipt);
+            sui::coin::from_balance(bal_a, scenario.ctx()).burn_for_testing();
+            sui::coin::from_balance(bal_b, scenario.ctx()).burn_for_testing();
+
+            // Verify fee_growth_global_b = 888 (no overflow)
+            let (fg_a, fg_b) = pool::fees_growth_global(&pool);
+            assert!(fg_a == max - 887, 102);
+            assert!(fg_b == 888, 103);
+
+            // --- a2b swap: generates fee_growth_global_a delta = 888 → wrapping_add overflow! ---
+            // wrapping_add(MAX - 887, 888) = MAX + 1 = 0 (mod 2^128)
+            let (bal_a, bal_b, receipt) = pool::flash_swap<TestCoinB, TestCoinA>(
+                &global_config, &mut vault, &mut pool,
+                true, true, 100000000,
+                tick_math::min_sqrt_price(),
+                &mut stats, &price_provider, &clock
+            );
+            pool::destroy_flash_swap_receipt<TestCoinB, TestCoinA>(receipt);
+            sui::coin::from_balance(bal_a, scenario.ctx()).burn_for_testing();
+            sui::coin::from_balance(bal_b, scenario.ctx()).burn_for_testing();
+
+            // Verify fee_growth_global_a = 0 (wrapped around!)
+            let (fg_a, fg_b) = pool::fees_growth_global(&pool);
+            assert!(fg_a == 0, 104);
+            assert!(fg_b == 888, 105);
+
+            // === Collect fees: wrapping arithmetic should produce correct results ===
+            // fee_growth_inside_a = wrapping_sub(wrapping_sub(0, MAX-887), 0) = 888
+            // fee_growth_inside_b = wrapping_sub(wrapping_sub(888, 0), 0) = 888
+            // fee_owned = mul_shr(90<<64, 888, 64) = 90 * 888 = 79920
+            let (fee_a, fee_b) = pool::collect_fee<TestCoinB, TestCoinA>(
+                &global_config, &mut pool, &position, true
+            );
+            assert!(sui::balance::value(&fee_a) == 79920, 1);
+            assert!(sui::balance::value(&fee_b) == 79920, 2);
+
+            // Protocol fees = 20000 per direction
+            let (protocol_fee_a, protocol_fee_b) = pool::collect_protocol_fee<TestCoinB, TestCoinA>(
+                &global_config, &mut pool, scenario.ctx()
+            );
+            assert!(sui::balance::value(&protocol_fee_a) == 20000, 3);
+            assert!(sui::balance::value(&protocol_fee_b) == 20000, 4);
+
+            // Cleanup
+            sui::coin::from_balance(fee_a, scenario.ctx()).burn_for_testing();
+            sui::coin::from_balance(fee_b, scenario.ctx()).burn_for_testing();
+            sui::coin::from_balance(protocol_fee_a, scenario.ctx()).burn_for_testing();
+            sui::coin::from_balance(protocol_fee_b, scenario.ctx()).burn_for_testing();
+            transfer::public_transfer(position, admin);
+            transfer::public_transfer(pool, admin);
+            transfer::public_transfer(gauge_cap, admin);
+            transfer::public_transfer(create_gauge_cap, admin);
+            test_scenario::return_shared(global_config);
+            test_scenario::return_shared(stats);
+            test_scenario::return_shared(price_provider);
+            test_scenario::return_shared(vault);
+            clock::destroy_for_testing(clock);
+        };
+
+        test_scenario::end(scenario);
+    }
+
+    #[test]
+    /// AUDIT-01: Verify fullsail_distribution_growth_global wraps on overflow
+    /// instead of aborting. Sets growth_global near u128::MAX, then triggers
+    /// a distribution update that pushes it past MAX via wrapping_add.
+    ///
+    /// Setup:
+    ///   - Pool with staked liquidity = 1000
+    ///   - fullsail_distribution_growth_global = u128::MAX - 100
+    ///   - distribution_reserve = 100000, rate = 1000 << 64
+    ///   - Advance clock by 1 second
+    ///
+    /// Expected:
+    ///   - Distribution of 1000 tokens (rate * 1s / Q64 = 1000)
+    ///   - growth_delta = 1000 * Q64 / 1000 = Q64 = 1 << 64
+    ///   - growth_global = wrapping_add(MAX - 100, 1 << 64) wraps past MAX
+    ///   - Transaction succeeds (does not abort)
+    fun test_fullsail_distribution_growth_global_wrapping_add_overflow() {
+        let admin = @0x1;
+        let mut scenario = test_scenario::begin(admin);
+
+        // Initialize factory and config
+        {
+            factory::test_init(scenario.ctx());
+            config::test_init(scenario.ctx());
+            stats::init_test(scenario.ctx());
+            price_provider::init_test(scenario.ctx());
+            gauge_cap::gauge_cap::init_test(scenario.ctx());
+            rewarder::test_init(scenario.ctx());
+        };
+
+        // Add fee tier
+        scenario.next_tx(admin);
+        {
+            let admin_cap = scenario.take_from_sender<config::AdminCap>();
+            let mut global_config = scenario.take_shared<config::GlobalConfig>();
+            config::add_fee_tier(&mut global_config, 1, 1000, scenario.ctx());
+            test_scenario::return_shared(global_config);
+            transfer::public_transfer(admin_cap, admin);
+        };
+
+        scenario.next_tx(admin);
+        {
+            let global_config = scenario.take_shared<config::GlobalConfig>();
+            let mut clock = clock::create_for_testing(scenario.ctx());
+            let create_gauge_cap = scenario.take_from_sender<gauge_cap::gauge_cap::CreateCap>();
+            let stats = scenario.take_shared<stats::Stats>();
+            let price_provider = scenario.take_shared<price_provider::PriceProvider>();
+            let mut vault = scenario.take_shared<rewarder::RewarderGlobalVault>();
+
+            // Create pool
+            let mut pool = pool::new<TestCoinB, TestCoinA>(
+                1,
+                18584142135623730951,
+                1000,
+                std::string::utf8(b""),
+                0,
+                @0x2,
+                @0x3,
+                true,
+                &clock,
+                scenario.ctx()
+            );
+
+            // Create gauge cap
+            let gauge_cap = gauge_cap::gauge_cap::create_gauge_cap(
+                &create_gauge_cap,
+                sui::object::id(&pool),
+                sui::object::id(&pool),
+                scenario.ctx()
+            );
+
+            // Initialize fullsail distribution gauge
+            pool::init_fullsail_distribution_gauge<TestCoinB, TestCoinA>(&mut pool, &gauge_cap);
+
+            // Sync distribution: rate = 1000 << 64, reserve = 100000
+            pool::sync_fullsail_distribution_reward<TestCoinB, TestCoinA>(
+                &mut pool,
+                &gauge_cap,
+                1000 << 64,
+                100000,
+                100,
+                &clock
+            );
+
+            // Set growth_global near u128::MAX so the next update wraps
+            let max = 0xffffffffffffffffffffffffffffffff; // u128::MAX
+            pool::test_set_fullsail_distribution<TestCoinB, TestCoinA>(
+                &mut pool,
+                max - 100, // growth_global near MAX
+            );
+
+            // Add liquidity and stake it
+            let mut position = pool::open_position<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut pool,
+                100,
+                200,
+                scenario.ctx()
+            );
+            let receipt = pool::add_liquidity<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut vault,
+                &mut pool,
+                &mut position,
+                1000,
+                &clock
+            );
+            pool::stake_in_fullsail_distribution<TestCoinB, TestCoinA>(
+                &mut pool,
+                &gauge_cap,
+                &position,
+                &clock
+            );
+
+            // Verify growth_global is near MAX
+            let growth_before = pool::get_fullsail_distribution_growth_global<TestCoinB, TestCoinA>(&pool);
+            assert!(growth_before == max - 100, 1);
+
+            // Advance clock by 1 second (1000 ms)
+            clock::increment_for_testing(&mut clock, 1000);
+
+            // Update growth global — this would abort without wrapping_add
+            // Distribution: rate * 1s / Q64 = 1000 tokens
+            // growth_delta = 1000 * Q64 / 1000 = Q64 = 1 << 64
+            // wrapping_add(MAX - 100, 1 << 64) wraps past MAX
+            pool::update_fullsail_distribution_growth_global<TestCoinB, TestCoinA>(
+                &mut pool,
+                &gauge_cap,
+                &clock
+            );
+
+            // Verify growth_global wrapped (new value < old value)
+            let growth_after = pool::get_fullsail_distribution_growth_global<TestCoinB, TestCoinA>(&pool);
+            assert!(growth_after < growth_before, 2);
+
+            // Verify the wrapped value is correct:
+            // wrapping_add(MAX - 100, 1 << 64) = (MAX - 100 + 1 << 64) mod 2^128
+            // = 1 << 64 - 101
+            let expected = (1u128 << 64) - 101;
+            assert!(growth_after == expected, 3);
+
+            // Verify the position correctly earns fullsail distribution after the wrap.
+            // 1 second passed and rate is a 1000 tokens per second
+            let position_id = sui::object::id(&position);
+            let fullsail_earned = pool::calculate_and_update_fullsail_distribution<TestCoinB, TestCoinA>(
+                &global_config,
+                &mut pool,
+                position_id
+            );
+            assert!(fullsail_earned == 1000, 4);
+
+            // Cleanup
+            pool::destroy_receipt<TestCoinB, TestCoinA>(receipt);
+            transfer::public_transfer(pool, admin);
+            transfer::public_transfer(position, admin);
+            transfer::public_transfer(gauge_cap, admin);
+            transfer::public_transfer(create_gauge_cap, admin);
+            test_scenario::return_shared(global_config);
+            test_scenario::return_shared(stats);
+            test_scenario::return_shared(price_provider);
+            test_scenario::return_shared(vault);
+            clock::destroy_for_testing(clock);
+        };
+
         test_scenario::end(scenario);
     }
 }
