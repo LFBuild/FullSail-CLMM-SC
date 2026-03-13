@@ -5,6 +5,6 @@ sui client ptb \
 @$POSITION_PUBLISHER \
 '"{description}"' \
 '"https://app.fullsail.finance/liquidity/{pool}/positions/{id}"' \
-'"https://app.fullsail.finance/static_files/fullsail_logo.png"' \
+'"https://app.fullsail.finance/static_files/position.png"' \
 '"https://fullsail.finance"' \
 '"FULLSAIL"'
