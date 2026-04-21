@@ -3,7 +3,7 @@
 source ./export.sh
 
 # Gas parameters (same as in add_role.sh)
-export GAS_COIN=0xe6600100e23ccefd343837558242768b59dacca73b28132482e1b0ec6370c81b
+export GAS_COIN=0x49ea18e0f1fdb3c8963c3d8ce7d1331ce58a7dfb283a2a700f28aea9962a1a34
 export GAS_BUDGET=200000000
 export SENDER=0xfed1c619fc8dd98367a0422ca9ef53c9825e2893d78dda822106d12687888fb3
 export RECEIVER=0xc1d8fbc5ee3426dc50eeafd25579212bfe8aa0169ebb5445d36abc68932339db
